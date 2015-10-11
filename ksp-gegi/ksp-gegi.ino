@@ -41,6 +41,8 @@ void setup() {
   digitalWrite(ledRCSoffPin,LOW);
   digitalWrite(ledSCSonPin,LOW);
   digitalWrite(ledSCSoffPin,LOW);
+  // set timeout to 200ms
+  Serial.setTimeout(200);
   // request status update
   Serial.println("I");
 }
@@ -88,14 +90,12 @@ void updateSCS() {
 void checkSerialInput() {
   char c;
   int ledpin=0,val=0,id=0;
-  // format: "G1=0" turn off green led 1 (RCS), "R2=1" turn off red led 2 (SCS)
-  while (Serial.available()>0) {
+  // format: "^LG1=0$" turn off green led 1 (RCS), "^LR2=1$" turn off red led 2 (SCS)
+  if (Serial.find("L")) {
     c = Serial.read();
     id = Serial.parseInt();  // skip '='
     val = Serial.parseInt(); // skip newline
-  }
-  Serial.print(c); Serial.print(id); Serial.print(val);
-  if (true) {
+    Serial.print(c); Serial.print(id); Serial.print(val);  // echo
     if (c=='G' && id==1) { ledpin = ledRCSonPin; }
     if (c=='R' && id==1) { ledpin = ledRCSoffPin; }
     if (c=='G' && id==2) { ledpin = ledSCSonPin; }

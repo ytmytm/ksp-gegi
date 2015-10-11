@@ -86,21 +86,20 @@ void updateSCS() {
 }
 
 void checkSerialInput() {
-  char c,id,eq,nl;
-  int ledpin=0,val=0;
+  char c;
+  int ledpin=0,val=0,id=0;
+  // format: "G1=0" turn off green led 1 (RCS), "R2=1" turn off red led 2 (SCS)
   while (Serial.available()>0) {
     c = Serial.read();
-    id = Serial.read();
-    eq = Serial.read(); // skip '='
-    val = Serial.parseInt();
-    nl = Serial.read(); // skip newline
+    id = Serial.parseInt();  // skip '='
+    val = Serial.parseInt(); // skip newline
   }
-  Serial.print(c); Serial.print(id); Serial.print(eq); Serial.print(val);
-  if (eq=='=') {
-    if (c=='G' && id=='1') { ledpin = ledRCSonPin; }
-    if (c=='R' && id=='1') { ledpin = ledRCSoffPin; }
-    if (c=='G' && id=='2') { ledpin = ledSCSonPin; }
-    if (c=='R' && id=='2') { ledpin = ledSCSoffPin; }
+  Serial.print(c); Serial.print(id); Serial.print(val);
+  if (true) {
+    if (c=='G' && id==1) { ledpin = ledRCSonPin; }
+    if (c=='R' && id==1) { ledpin = ledRCSoffPin; }
+    if (c=='G' && id==2) { ledpin = ledSCSonPin; }
+    if (c=='R' && id==2) { ledpin = ledSCSoffPin; }
     if (ledpin>0) {
       if (val==0) {
         digitalWrite(ledpin,LOW);

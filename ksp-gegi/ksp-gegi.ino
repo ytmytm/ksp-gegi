@@ -1,12 +1,19 @@
 
 #include <Arduino.h>
 
+// P0:
+// potencjometr od nawilżacza
+// nieprzylutowane -> GND, środek (czerwony pasek) -> A0, przylutowane -> 5V
+// kalibracja: po włączeniu przekręcić w obie skrajne pozycje
+// D0:
+// zielona strona, pomiędzy GND a D4
+
 // circuit
 const int throttlePin = A0;  // P0: Analog input pin that the potentiometer is attached to
 const int stagePin = 4;      // D0: Digital input pin that STAGE button is attached to
 
 const int RCSPin = 5;        // D1: RCS switch
-const int ledRCSonPin = 6;   // G1: RCS status ON (green)
+const int ledRCSonPin = 13; //6;   // G1: RCS status ON (green)
 const int ledRCSoffPin = 7;  // R1: RCS status OFF (red)
 
 const int SCSPin = 8;        // D2: SCS switch
@@ -18,6 +25,7 @@ int lastThrottleValue = 0;
 int throttleValue = 0;
 int throttleMin = 1023;
 int throttleMax = 0;
+#define THROTTLE_THRESHOLD 4
 
 // switch control
 uint8_t lastStageState = HIGH;
@@ -50,22 +58,29 @@ void setup() {
 void updateThrottle() {
   // read the analog in value:
   throttleValue = analogRead(throttlePin);
-  // calibrate
+  // auto calibrate
   if (throttleValue>throttleMax) { throttleMax=throttleValue; }
   if (throttleValue<throttleMin) { throttleMin=throttleValue; }
   // map it to the range of the analog out:
   throttleValue = map(throttleValue, throttleMin, throttleMax, 0, 255);
   // is it different enough from last reading?
-  if (abs(throttleValue-lastThrottleValue)>4) {
+  if (abs(throttleValue-lastThrottleValue)>THROTTLE_THRESHOLD) {
+    if (throttleValue<THROTTLE_THRESHOLD) {
+      throttleValue = 0;
+    }
+    if (throttleValue>255-THROTTLE_THRESHOLD) {
+      throttleValue = 255;
+    }
     // dump status
     Serial.print("P0=");
     Serial.println(throttleValue,HEX);
+    lastThrottleValue = throttleValue;
   }
-  lastThrottleValue = throttleValue;
 }
 
 uint8_t updateButton(int pin, int id, uint8_t lastState) {
-  uint8_t state = digitalRead(pin);
+  // reverse logic because switches are to GND with internal pullup, so pushed state (ON) is 0V
+  uint8_t state = !digitalRead(pin);
   if (state != lastState) {
     Serial.print('D');
     Serial.print(id);
@@ -91,11 +106,12 @@ void checkSerialInput() {
   char c;
   int ledpin=0,val=0,id=0;
   // format: "^LG1=0$" turn off green led 1 (RCS), "^LR2=1$" turn off red led 2 (SCS)
+  if (Serial.available()>0) {
   if (Serial.find("L")) {
     c = Serial.read();
     id = Serial.parseInt();  // skip '='
     val = Serial.parseInt(); // skip newline
-    Serial.print(c); Serial.print(id); Serial.print(val);  // echo
+    Serial.print(c); Serial.print(id); Serial.println(val);  // echo for ack
     if (c=='G' && id==1) { ledpin = ledRCSonPin; }
     if (c=='R' && id==1) { ledpin = ledRCSoffPin; }
     if (c=='G' && id==2) { ledpin = ledSCSonPin; }
@@ -107,6 +123,7 @@ void checkSerialInput() {
         digitalWrite(ledpin,HIGH);
       }
     }
+  }
   }
 }
 

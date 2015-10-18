@@ -10,15 +10,12 @@
 
 // circuit
 const int throttlePin = A0;  // P0: Analog input pin that the potentiometer is attached to
-const int stagePin = 4;      // D0: Digital input pin that STAGE button is attached to
 
-const int RCSPin = 5;        // D1: RCS switch
-const int ledRCSonPin = 13; //6;   // G1: RCS status ON (green)
-const int ledRCSoffPin = 7;  // R1: RCS status OFF (red)
-
-const int SCSPin = 8;        // D2: SCS switch
-const int ledSCSonPin = 9;   // G2: SCS status ON (green)
-const int ledSCSoffPin = 10; // R2: SCS status OFF (red)
+const uint8_t nPins = 2;
+const uint8_t switchPins[] = {4, 5, 8};	// Dx: stage, RCS, SAS switch
+const uint8_t onPins[] = {0, 13, 9};	// Gx: stage, RCS, SAS ON (green)
+const uint8_t offPins[] = {0, 7, 10};	// Rx: stage, RCS, SAS OFF (red)
+uint8_t lastPinState[] = {HIGH, HIGH, HIGH};
 
 // throttle control
 int lastThrottleValue = 0;
@@ -27,28 +24,23 @@ int throttleMin = 1023;
 int throttleMax = 0;
 #define THROTTLE_THRESHOLD 4
 
-// switch control
-uint8_t lastStageState = HIGH;
-uint8_t lastRCSState = HIGH;
-uint8_t lastSCSState = HIGH;
-
 void setup() {
   // initialize serial communications at 9600 bps:
   Serial.begin(38400); 
   // make button pins inputs
-  pinMode(stagePin,INPUT_PULLUP);
-  pinMode(RCSPin,INPUT_PULLUP);
-  pinMode(SCSPin,INPUT_PULLUP);
-  // make LED pins outputs
-  pinMode(ledRCSonPin,OUTPUT);
-  pinMode(ledRCSoffPin,OUTPUT);
-  pinMode(ledSCSonPin,OUTPUT);
-  pinMode(ledSCSoffPin,OUTPUT);
-  // turn off all leds
-  digitalWrite(ledRCSonPin,LOW);
-  digitalWrite(ledRCSoffPin,LOW);
-  digitalWrite(ledSCSonPin,LOW);
-  digitalWrite(ledSCSoffPin,LOW);
+  for (uint8_t i=0; i<nPins; i++) {
+	// switch pin input
+	if (switchPins[i]>0) { pinMode(switchPins[i],INPUT_PULLUP); }
+        // make LED pins outputs+turn off
+	if (onPins[i]>0) {
+          pinMode(onPins[i],OUTPUT);
+          digitalWrite(onPins[i],LOW);
+        }
+        if (offPins[i]>0) {
+	  pinMode(offPins[i],OUTPUT);
+          digitalWrite(offPins[i],LOW);
+        }
+  }
   // set timeout to 200ms
   Serial.setTimeout(200);
   // request status update
@@ -79,7 +71,7 @@ void updateThrottle() {
 }
 
 uint8_t updateButton(int pin, int id, uint8_t lastState) {
-  // reverse logic because switches are to GND with internal pullup, so pushed state (ON) is 0V
+  // reverse logic because switches are connected to GND with internal pullup, so pushed state (ON) is 0V
   uint8_t state = !digitalRead(pin);
   if (state != lastState) {
     Serial.print('D');
@@ -90,21 +82,15 @@ uint8_t updateButton(int pin, int id, uint8_t lastState) {
   return(state);
 }
 
-void updateStage() {
-  lastStageState = updateButton(stagePin,0,lastStageState);
-}
-
-void updateRCS() {
-  lastRCSState = updateButton(RCSPin,1,lastRCSState);
-}
-
-void updateSCS() {
-  lastSCSState = updateButton(SCSPin,2,lastSCSState);
+void updatePins() {
+	for (uint8_t i=0; i<nPins; i++) {
+		lastPinState[i] = updateButton(switchPins[i],i,lastPinState[i]);
+	}
 }
 
 void checkSerialInput() {
-  char c;
-  int ledpin=0,val=0,id=0;
+  uint8_t c;
+  uint8_t ledPin=0,val=0,id=0;
   // format: "^LG1=0$" turn off green led 1 (RCS), "^LR2=1$" turn off red led 2 (SCS)
   if (Serial.available()>0) {
   if (Serial.find("L")) {
@@ -112,30 +98,24 @@ void checkSerialInput() {
     id = Serial.parseInt();  // skip '='
     val = Serial.parseInt(); // skip newline
     Serial.print(c); Serial.print(id); Serial.println(val);  // echo for ack
-    if (c=='G' && id==1) { ledpin = ledRCSonPin; }
-    if (c=='R' && id==1) { ledpin = ledRCSoffPin; }
-    if (c=='G' && id==2) { ledpin = ledSCSonPin; }
-    if (c=='R' && id==2) { ledpin = ledSCSoffPin; }
-    if (ledpin>0) {
-      if (val==0) {
-        digitalWrite(ledpin,LOW);
-      } else {
-        digitalWrite(ledpin,HIGH);
-      }
-    }
+	if (id<nPins) {
+		if (c=='G') { ledPin = onPins[id]; }
+		if (c=='R') { ledPin = offPins[id]; }
+		if (ledPin>0) {
+			if (val==0) {
+				digitalWrite(ledPin,LOW);
+			} else {
+				digitalWrite(ledPin,HIGH);
+			}
+		}
+	}
   }
   }
 }
 
 void loop() {
   updateThrottle();
-  updateStage();
-  updateRCS();
-  updateSCS();
+  updatePins();
   checkSerialInput();
-  // wait 2 milliseconds before the next loop
-  // for the analog-to-digital converter to settle
-  // after the last reading:
-  delay(2);                     
+  delay(200);
 }
-

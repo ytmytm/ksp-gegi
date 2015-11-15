@@ -1,32 +1,33 @@
 
 #include <Arduino.h>
 
-// P0:
-// potencjometr od nawilżacza
-// nieprzylutowane -> GND, środek (czerwony pasek) -> A0, przylutowane -> 5V
-// kalibracja: po włączeniu przekręcić w obie skrajne pozycje
-// D0:
-// zielona strona, pomiędzy GND a D4
+// diody LED: niebieskie (bez rezystora) do GND, białe (z rezystorem) do pinu
+// potencjometr: niebieski z czarną kreską do GND, biały do +5V, niebieski do pinu A0
+// przełączniki: niebieski do GND, biały do pinu, wszystkie zamontowane tak, aby niebieski był w środku, biały na dole, a niepodłączone u góry (wtedy gałka w górę==załączenie)
 
-// circuit
-const int throttlePin = A0;  // P0: Analog input pin that the potentiometer is attached to
+// przepisać tablice+npins jako klasę?
+// to: oraz array.size() zamiast nPins http://hackaday.com/2015/11/13/code-craft-embedding-c-timing-virtual-functions/
+//   ok jeśli będzie niedużo gorsze od 5104 bajtów
 
-const uint8_t nPins = 2;
-const uint8_t switchPins[] = {4, 5, 8};	// Dx: stage, RCS, SAS switch
-const uint8_t onPins[] = {0, 13, 9};	// Gx: stage, RCS, SAS ON (green)
-const uint8_t offPins[] = {0, 7, 10};	// Rx: stage, RCS, SAS OFF (red)
-uint8_t lastPinState[] = {HIGH, HIGH, HIGH};
+const int throttlePin = A0;  // P0
+
+const uint8_t nPins = 4; // długość tabel poniżej
+const uint8_t switchPins[] = {4, 5, 8, 12};	// Dx: stage, RCS, SAS, gear switch
+const uint8_t onPins[] = {0, 13, 9, 0};	// Gx: stage, RCS, SAS ON (green)
+const uint8_t offPins[] = {0, 0, 0, 0};	// Rx: stage, RCS, SAS OFF (red)
+uint8_t lastPinState[] = {HIGH, HIGH, HIGH, HIGH};
 
 // throttle control
 int lastThrottleValue = 0;
 int throttleValue = 0;
 int throttleMin = 1023;
 int throttleMax = 0;
-#define THROTTLE_THRESHOLD 4
+#define THROTTLE_THRESHOLD 2
+#define SERIAL_SPEED 9600
 
 void setup() {
   // initialize serial communications at 9600 bps:
-  Serial.begin(38400); 
+  Serial.begin(SERIAL_SPEED);
   // make button pins inputs
   for (uint8_t i=0; i<nPins; i++) {
 	// switch pin input
@@ -97,7 +98,7 @@ void checkSerialInput() {
     c = Serial.read();
     id = Serial.parseInt();  // skip '='
     val = Serial.parseInt(); // skip newline
-    Serial.print(c); Serial.print(id); Serial.println(val);  // echo for ack
+//    Serial.print(c); Serial.print(id); Serial.println(val);  // echo for ack
 	if (id<nPins) {
 		if (c=='G') { ledPin = onPins[id]; }
 		if (c=='R') { ledPin = offPins[id]; }

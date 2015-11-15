@@ -13,7 +13,7 @@ while conn==None:
 
 print("Connection successful "+conn.krpc.get_status().version)
 
-ser=serial.Serial("COM7",38400,timeout=1)
+ser=serial.Serial("COM7",9600,timeout=0.2)
 if not ser.isOpen():
 	print("Can't open COM7!")
 
@@ -35,7 +35,11 @@ speed	 = conn.add_stream(vessel.flight,vessel.orbit.body.non_rotating_reference_
 orbit	 = vessel.orbit
 
 lastrcs = control.rcs
+lastsas = control.sas
+lastgear = control.gear
 
+# may throw krpc.error.RPCError if vessel no longer active/exists,
+# should roll back to vessel = conn.space_center.active_vessel above loop
 while True:
 	print("---------CONTROL")
 	print("SAS:"+str(control.sas)+"\tRCS:"+str(control.rcs))
@@ -58,20 +62,50 @@ while True:
 			print("Serial:["+line+"]\n----\n")
 			if line=="I":
 				lastrcs=None
-			if line=="D0=1":
-				control.activate_next_stage()
+				lastsas=None
+				lastgear=None
 			if line[:3]=="P0=":
 				control.throttle = int(line[3:],16)/255
+			if line=="D0=1":
+				control.activate_next_stage()
+			if line=="D1=0":
+				control.rcs=False
+			if line=="D1=1":
+				control.rcs=True
+			if line=="D2=0":
+				control.sas=False
+			if line=="D2=1":
+				control.sas=True
+			if line=="D3=0":
+				control.gear=False
+			if line=="D3=1":
+				control.gear=True
 
 		# serial state change
 		if control.rcs!=lastrcs:
 			lastrcs = control.rcs
-			if control.rcs:
+			if lastrcs:
 				ser.write(b"LG1=1\n")
 				ser.write(b"LR1=0\n")
 			else:
 				ser.write(b"LG1=0\n")
 				ser.write(b"LR1=1\n")
+		if control.sas!=lastsas:
+			lastsas = control.sas
+			if lastsas:
+				ser.write(b"LG2=1\n")
+				ser.write(b"LR2=0\n")
+			else:
+				ser.write(b"LG2=0\n")
+				ser.write(b"LR2=1\n")
+		if control.gear!=lastgear:
+			lastgear = control.gear
+			if lastgear:
+				ser.write(b"LG3=1\n")
+				ser.write(b"LR3=0\n")
+			else:
+				ser.write(b"LG3=0\n")
+				ser.write(b"LR3=1\n")
 
 
 	# local console

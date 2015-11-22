@@ -1,9 +1,11 @@
 
 #include <Arduino.h>
 
-// diody LED: niebieskie (bez rezystora) do GND, białe (z rezystorem) do pinu
+// dł kabelków 15-20cm
+// diody LED: niebieskie (bez rezystora, krótka nóżka) do GND, białe (z rezystorem, długa nóżka) do pinu
 // potencjometr: niebieski z czarną kreską do GND, biały do +5V, niebieski do pinu A0
-// przełączniki: niebieski do GND, biały do pinu, wszystkie zamontowane tak, aby niebieski był w środku, biały na dole, a niepodłączone u góry (wtedy gałka w górę==załączenie)
+// przełączniki2: niebieski do GND, biały do pinu, wszystkie zamontowane tak, aby niebieski był w środku, biały na dole, a niepodłączone u góry (wtedy gałka w górę==załączenie)
+// przełączniki3: środkowy (ciemny) do GND, boczne do pinów
 
 // przepisać tablice+npins jako klasę?
 // to: oraz array.size() zamiast nPins http://hackaday.com/2015/11/13/code-craft-embedding-c-timing-virtual-functions/

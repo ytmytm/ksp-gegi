@@ -13,7 +13,7 @@ while conn==None:
 
 print("Connection successful "+conn.krpc.get_status().version)
 
-ser=serial.Serial("COM7",9600,timeout=0.2)
+ser=serial.Serial("COM3",9600,timeout=0.2)
 if not ser.isOpen():
 	print("Can't open COM7!")
 
@@ -56,11 +56,22 @@ while True:
 	print("Altitude: "+str(round(flight().mean_altitude,0))+"\tSpeed: "+str(round(speed().speed,2)))
 	print("Pitch :"+str(round(flight().pitch,1))+"\tRoll :"+str(round(flight().roll,1))+"\t Head :"+str(round(flight().heading,1)))
 
-	temp_pct=max([max(part.temperature/part.max_temperature,part.skin_temperature/part.max_skin_temperature) for part in vessel.parts.all])
+	try:
+		temp_pct=max([max(part.temperature/part.max_temperature,part.skin_temperature/part.max_skin_temperature) for part in vessel.parts.all])
+	except ValueError:
+		temp_pct = 0
 	res = vessel.resources
-	power_pct = res.amount('ElectricCharge')/res.max('ElectricCharge')
-	fuel_pct = res.amount('LiquidFuel')/res.max('LiquidFuel')
-	print("Max heat: "+str(round(temp_pct*100,0))+"\tPower: "+str(round(power_pct*100),0)+"\tL.fuel: "+str(round(fuel_pct*100,0)))
+	rmax = res.max('ElectricCharge')
+	if rmax>0:
+		power_pct = res.amount('ElectricCharge')/rmax
+	else:
+		power_pct = 0
+	rmax = res.max('LiquidFuel')
+	if rmax>0:
+		fuel_pct = res.amount('LiquidFuel')/rmax
+	else:
+		fuel_pct = 0
+	print("Max heat: "+str(round(temp_pct*100,0))+"\tPower: "+str(round(power_pct*100,0))+"\tL.fuel: "+str(round(fuel_pct*100,0)))
 
 	# serial link
 	if ser.isOpen():
@@ -91,39 +102,41 @@ while True:
 
 		# Warnings
 		# overheat <0.6, .8-.9, >.9
-		if ((temp_pct<0.6) and (overheat!=0))
+		if ((temp_pct<0.6) and (overheat!=0)):
 			overheat = 0
 			ser.write(b"LG4=1\n")
 			ser.write(b"LR4=0\n")
-		if ((temp_pct>=0.6) and (temp_pct<0.9) and (overheat!=1))
+		if ((temp_pct>=0.6) and (temp_pct<0.8) and (overheat!=1)):
 			overheat = 1
 			ser.write(b"LG4=0\n")
 			ser.write(b"LR4=1\n")
-		if ((temp_pct>=0.9) and (overheat!=2))
+		if ((temp_pct>=0.8) and (overheat!=2)):
 			overheat = 2
 			ser.write(b"LG4=0\n")
 			ser.write(b"LR4=2\n")
 		# power
-		if ((power_pct>=.2) and (lowpower!=0))
+		if ((power_pct>=.2) and (lowpower!=0)):
+			lowpower = 0
 			ser.write(b"LG5=1\n")
 			ser.write(b"LR5=0\n")
-		if ((power_pct<.2) and (power_pct>.1) and (lowpower!=1))
+		if ((power_pct<.2) and (power_pct>.1) and (lowpower!=1)):
 			lowpower = 1
 			ser.write(b"LG5=0\n")
 			ser.write(b"LR5=1\n")
-		if ((power_pct<=.1) and (lowpower!=2))
+		if ((power_pct<=.1) and (lowpower!=2)):
 			lowpower = 2
 			ser.write(b"LG5=0\n")
 			ser.write(b"LR5=2\n")
 		# fuel
-		if (((fuel_pct>=.2) or (fuel_pct==0)) and (lowfuel!=0))
+		if (((fuel_pct>=.2) or (fuel_pct==0)) and (lowfuel!=0)):
+			lowfuel = 0
 			ser.write(b"LG6=1\n")
 			ser.write(b"LR6=0\n")
-		if ((fuel_pct<.2) and (fuel_pct>.1) and (lowfuel!=1))
+		if ((fuel_pct<.2) and (fuel_pct>.1) and (lowfuel!=1)):
 			lowfuel = 1
 			ser.write(b"LG6=0\n")
 			ser.write(b"LR6=1\n")
-		if ((fuel_pct<=.1) and (fuel_pct>0) and (lowfuel!=2))
+		if ((fuel_pct<=.1) and (fuel_pct>0) and (lowfuel!=2)):
 			lowpower = 2
 			ser.write(b"LG6=0\n")
 			ser.write(b"LR6=2\n")

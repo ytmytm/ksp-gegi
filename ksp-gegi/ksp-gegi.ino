@@ -13,11 +13,11 @@
 
 const int throttlePin = A0;  // P0
 
-const uint8_t nPins = 4; // długość tabel poniżej
-const uint8_t switchPins[] = {4, 5, 8, 12};	// Dx: stage, RCS, SAS, gear switch
-const uint8_t onPins[] = {0, 13, 9, 0};	// Gx: stage, RCS, SAS ON (green)
-const uint8_t offPins[] = {0, 0, 0, 0};	// Rx: stage, RCS, SAS OFF (red)
-uint8_t lastPinState[] = {HIGH, HIGH, HIGH, HIGH};
+const uint8_t nPins = 7; // długość tabel poniżej
+const uint8_t switchPins[] = {4, 5, 8, 12, 0, 0, 0};	// Dx: stage, RCS, SAS, gear switch, overheat, lowpower, lowfuel
+const uint8_t onPins[] = {0, 13, 9, 0, 0, 0, 0};	// Gx: stage, RCS, SAS, overheat, lowpower, lowfuel ON (green)
+const uint8_t offPins[] = {0, 0, 0, 0, 6, 7, 10};	// Rx: stage, RCS, SAS, overheat, lowpower, lowfuel OFF (red)
+uint8_t lastPinState[] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
 
 // throttle control
 int lastThrottleValue = 0;
@@ -34,13 +34,13 @@ void setup() {
   for (uint8_t i=0; i<nPins; i++) {
 	// switch pin input
 	if (switchPins[i]>0) { pinMode(switchPins[i],INPUT_PULLUP); }
-        // make LED pins outputs+turn off
+    // make LED pins outputs+turn off
 	if (onPins[i]>0) {
           pinMode(onPins[i],OUTPUT);
           digitalWrite(onPins[i],LOW);
         }
         if (offPins[i]>0) {
-	  pinMode(offPins[i],OUTPUT);
+          pinMode(offPins[i],OUTPUT);
           digitalWrite(offPins[i],LOW);
         }
   }

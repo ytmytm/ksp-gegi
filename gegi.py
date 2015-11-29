@@ -37,6 +37,9 @@ orbit	 = vessel.orbit
 lastrcs = control.rcs
 lastsas = control.sas
 lastgear = control.gear
+overheat = 0
+lowpower = 0
+lowfuel = 0
 
 # may throw krpc.error.RPCError if vessel no longer active/exists,
 # should roll back to vessel = conn.space_center.active_vessel above loop
@@ -53,7 +56,12 @@ while True:
 	print("Altitude: "+str(round(flight().mean_altitude,0))+"\tSpeed: "+str(round(speed().speed,2)))
 	print("Pitch :"+str(round(flight().pitch,1))+"\tRoll :"+str(round(flight().roll,1))+"\t Head :"+str(round(flight().heading,1)))
 
-	
+	temp_pct=max([max(part.temperature/part.max_temperature,part.skin_temperature/part.max_skin_temperature) for part in vessel.parts.all])
+	res = vessel.resources
+	power_pct = res.amount('ElectricCharge')/res.max('ElectricCharge')
+	fuel_pct = res.amount('LiquidFuel')/res.max('LiquidFuel')
+	print("Max heat: "+str(round(temp_pct*100,0))+"\tPower: "+str(round(power_pct*100),0)+"\tL.fuel: "+str(round(fuel_pct*100,0)))
+
 	# serial link
 	if ser.isOpen():
 		line = "?"
@@ -80,6 +88,45 @@ while True:
 				control.gear=False
 			if line=="D3=1":
 				control.gear=True
+
+		# Warnings
+		# overheat <0.6, .8-.9, >.9
+		if ((temp_pct<0.6) and (overheat!=0))
+			overheat = 0
+			ser.write(b"LG4=1\n")
+			ser.write(b"LR4=0\n")
+		if ((temp_pct>=0.6) and (temp_pct<0.9) and (overheat!=1))
+			overheat = 1
+			ser.write(b"LG4=0\n")
+			ser.write(b"LR4=1\n")
+		if ((temp_pct>=0.9) and (overheat!=2))
+			overheat = 2
+			ser.write(b"LG4=0\n")
+			ser.write(b"LR4=2\n")
+		# power
+		if ((power_pct>=.2) and (lowpower!=0))
+			ser.write(b"LG5=1\n")
+			ser.write(b"LR5=0\n")
+		if ((power_pct<.2) and (power_pct>.1) and (lowpower!=1))
+			lowpower = 1
+			ser.write(b"LG5=0\n")
+			ser.write(b"LR5=1\n")
+		if ((power_pct<=.1) and (lowpower!=2))
+			lowpower = 2
+			ser.write(b"LG5=0\n")
+			ser.write(b"LR5=2\n")
+		# fuel
+		if (((fuel_pct>=.2) or (fuel_pct==0)) and (lowfuel!=0))
+			ser.write(b"LG6=1\n")
+			ser.write(b"LR6=0\n")
+		if ((fuel_pct<.2) and (fuel_pct>.1) and (lowfuel!=1))
+			lowfuel = 1
+			ser.write(b"LG6=0\n")
+			ser.write(b"LR6=1\n")
+		if ((fuel_pct<=.1) and (fuel_pct>0) and (lowfuel!=2))
+			lowpower = 2
+			ser.write(b"LG6=0\n")
+			ser.write(b"LR6=2\n")
 
 		# serial state change
 		if control.rcs!=lastrcs:

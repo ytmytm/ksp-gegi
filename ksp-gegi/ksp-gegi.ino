@@ -14,10 +14,15 @@
 const int throttlePin = A0;  // P0
 
 const uint8_t nPins = 7; // długość tabel poniżej
-const uint8_t switchPins[] = {4, 5, 8, 12, 0, 0, 0};	// Dx: stage, RCS, SAS, gear switch, overheat, lowpower, lowfuel
-const uint8_t onPins[] = {0, 13, 9, 0, 0, 0, 0};	// Gx: stage, RCS, SAS, overheat, lowpower, lowfuel ON (green)
-const uint8_t offPins[] = {0, 0, 0, 0, 6, 7, 10};	// Rx: stage, RCS, SAS, overheat, lowpower, lowfuel OFF (red)
+const uint8_t switchPins[] = {4,  5, 8, 12, 0, 0,  0};	// Dx: stage, RCS, SAS, gear switch, overheat, lowpower, lowfuel
+const uint8_t onPins[] =     {0, 13, 9,  0, 0, 0,  0};	// Gx: stage, RCS, SAS, overheat, lowpower, lowfuel ON (green)
+const uint8_t offPins[] =    {0,  0, 0,  0, 6, 7, 10};	// Rx: stage, RCS, SAS, overheat, lowpower, lowfuel OFF (red)
 uint8_t lastPinState[] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
+uint8_t lastLedState[] =  {0, 0, 0, 0, 0, 0, 0};	// bits: 0=GxON, 1=RxON, 2=GxBLINK, 3=RxBLINK
+
+// blinker control
+unsigned long lastBlink = 0;
+const unsigned long blinkInterval = 500;
 
 // throttle control
 int lastThrottleValue = 0;
@@ -35,6 +40,7 @@ void setup() {
 	// switch pin input
 	if (switchPins[i]>0) { pinMode(switchPins[i],INPUT_PULLUP); }
     // make LED pins outputs+turn off
+	lastLedState[i] = 0;
 	if (onPins[i]>0) {
           pinMode(onPins[i],OUTPUT);
           digitalWrite(onPins[i],LOW);
@@ -48,6 +54,8 @@ void setup() {
   Serial.setTimeout(200);
   // request status update
   Serial.println("I");
+  // start blink counter
+  lastBlink = millis();
 }
 
 void updateThrottle() {
@@ -93,7 +101,7 @@ void updatePins() {
 
 void checkSerialInput() {
   uint8_t c;
-  uint8_t ledPin=0,val=0,id=0;
+  uint8_t val=0,id=0,nval=0;
   // format: "^LG1=0$" turn off green led 1 (RCS), "^LR2=1$" turn off red led 2 (SCS)
   if (Serial.available()>0) {
   if (Serial.find("L")) {
@@ -101,18 +109,55 @@ void checkSerialInput() {
     id = Serial.parseInt();  // skip '='
     val = Serial.parseInt(); // skip newline
 //    Serial.print(c); Serial.print(id); Serial.println(val);  // echo for ack
-	if (id<nPins) {
-		if (c=='G') { ledPin = onPins[id]; }
-		if (c=='R') { ledPin = offPins[id]; }
-		if (ledPin>0) {
-			if (val==0) {
-				digitalWrite(ledPin,LOW);
-			} else {
-				digitalWrite(ledPin,HIGH);
-			}
-		}
+	if (id>0 && id<=nPins) {
+                nval = lastLedState[id];
+                if (c=='G') {
+                  nval = nval & 0b11111010;
+                  if (val==1) nval=nval | 0x01;
+                  if (val==2) nval=nval | 0x01 | 0x04;
+                }
+                if (c=='R') {
+                  nval = nval & 0b11110101;
+                  if (val==1) nval=nval | 0x02;
+                  if (val==2) nval=nval | 0x02 | 0x08;
+                }
+		lastLedState[id] = nval;
 	}
   }
+  }
+}
+
+// set all LEDs according to state
+void updateLeds() {
+  unsigned long currentMillis = millis();
+  bool blink = false;
+  // is it time for tick?
+  if (((unsigned long)(currentMillis - lastBlink) >= blinkInterval)) {
+	  blink = true;
+	  lastBlink = currentMillis;
+  }
+//  Serial.print("blink="); Serial.println(blink);
+  // update all leds
+  for (uint8_t i=0; i<nPins; i++) {
+	uint8_t nstate;
+	uint8_t gPin = onPins[i];
+	if (gPin!=0) {
+		nstate = (lastLedState[i] & 0x01) ? HIGH : LOW;
+		if (nstate==HIGH && (lastLedState[i] & 0x04) && blink) {
+			nstate = !digitalRead(gPin);
+		}
+//Serial.print("L"); Serial.print(gPin); Serial.print(nstate);
+		digitalWrite(gPin,nstate);
+	}
+	uint8_t rPin = offPins[i];
+	if (rPin!=0) {
+		nstate = (lastLedState[i] & 0x02) ? HIGH : LOW;
+		if (nstate==HIGH && (lastLedState[i] & 0x08) && blink) {
+			nstate = !digitalRead(rPin);
+		}
+//Serial.print("R"); Serial.print(rPin); Serial.print(nstate);
+		digitalWrite(rPin,nstate);
+	}
   }
 }
 
@@ -120,5 +165,7 @@ void loop() {
   updateThrottle();
   updatePins();
   checkSerialInput();
+  updateLeds();
   delay(200);
 }
+

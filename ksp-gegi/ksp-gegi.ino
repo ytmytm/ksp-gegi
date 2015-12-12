@@ -15,7 +15,7 @@
 const uint8_t nPins = 7; // długość tabel poniżej
 const uint8_t switchPins[] = {4,  5, 8, 12, 0, 0,  0};	// Dx: stage, RCS, SAS, gear switch, overheat, lowpower, lowfuel
 const uint8_t onPins[] =     {0, 13, 9,  0, 0, 0,  0};	// Gx: stage, RCS, SAS, overheat, lowpower, lowfuel ON (green)
-const uint8_t offPins[] =    {0,  0, 0,  0, 6, 7, 10};	// Rx: stage, RCS, SAS, overheat, lowpower, lowfuel OFF (red)
+const uint8_t offPins[] =    {0,  0, 0,  0, 6, 7,  3};	// Rx: stage, RCS, SAS, overheat, lowpower, lowfuel OFF (red)
 uint8_t lastPinState[] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
 uint8_t lastLedState[] =  {0, 0, 0, 0, 0, 0, 0};	// bits: 0=GxON, 1=RxON, 2=GxBLINK, 3=RxBLINK
 
@@ -23,12 +23,16 @@ uint8_t lastLedState[] =  {0, 0, 0, 0, 0, 0, 0};	// bits: 0=GxON, 1=RxON, 2=GxBL
 unsigned long lastBlink = 0;
 const unsigned long blinkInterval = 500;
 
-// analog control
+// analog control input
 const uint8_t nAPins = 2;
 const uint8_t aPins[] = {A0, A1};	// pot: throttle, timewarp
-const int lastAValue[] = {0, 0};
-const int aValue[] = {0, 0};
+int lastAValue[] = {0, 0};
+int aValue[] = {0, 0};
 const int aThreshold[] = {2, 2};
+
+// analog control output
+const uint8_t nAOutPins = 1;
+const uint8_t aOutPins[] = {10};	// vmeter: g-force
 
 // serial port
 #define SERIAL_SPEED 9600
@@ -105,17 +109,16 @@ void updatePins() {
 	}
 }
 
-void checkSerialInput() {
-  uint8_t c;
-  uint8_t val=0,id=0,nval=0;
-  // format: "^LG1=0$" turn off green led 1 (RCS), "^LR2=1$" turn off red led 2 (SCS)
-  if (Serial.available()>0) {
-  if (Serial.find("L")) {
+// commands like: ^L{GR}{id}={val}$
+// format: "^LG1=0$" turn off green led 1 (RCS), "^LR2=1$" turn off red led 2 (SCS)
+void handleSerialInputLed() {
+    uint8_t c;
+    uint8_t val=0,id=0,nval=0;
     c = Serial.read();
     id = Serial.parseInt();  // skip '='
     val = Serial.parseInt(); // skip newline
 //    Serial.print(c); Serial.print(id); Serial.println(val);  // echo for ack
-	if (id>0 && id<=nPins) {
+	if (id>=0 && id<=nPins) {
                 nval = lastLedState[id];
                 if (c=='G') {
                   nval = nval & 0b11111010;
@@ -129,7 +132,29 @@ void checkSerialInput() {
                 }
 		lastLedState[id] = nval;
 	}
-  }
+}
+
+// commands like ^A{id}={val}$
+void handleSerialInputAnalogOut() {
+    uint8_t val=0,id=0;
+    id = Serial.parseInt();  // skip '='
+    val = Serial.parseInt(); // skip newline
+//    Serial.print(id); Serial.println(val);  // echo for ack
+	if (id>=0 && id<=nAOutPins) {
+		analogWrite(aOutPins[id], val);
+	}
+}
+
+void checkSerialInput() {
+  uint8_t c;
+  if (Serial.available()>0) {
+    c = Serial.read();
+	if (c == 'L') {
+	  handleSerialInputLed();
+	}
+	if (c == 'A') {
+	  handleSerialInputAnalogOut();
+	}
   }
 }
 
@@ -174,4 +199,3 @@ void loop() {
   updateLeds();
   delay(200);
 }
-

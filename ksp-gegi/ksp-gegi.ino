@@ -1,11 +1,15 @@
 
 #include <Arduino.h>
+#include <Wire.h>
+// https://bitbucket.org/fmalpartida/new-liquidcrystal/downloads
+#include <LiquidCrystal_I2C.h> // Using version 1.2.1
 
 // dł kabelków 15-20cm
 // diody LED: niebieskie (bez rezystora, krótka nóżka) do GND, białe (z rezystorem, długa nóżka) do pinu
 // potencjometr: niebieski z czarną kreską do GND, biały do +5V, niebieski do pinu A0 / A1
 // przełączniki2: niebieski do GND, biały do pinu, wszystkie zamontowane tak, aby niebieski był w środku, biały na dole, a niepodłączone u góry (wtedy gałka w górę==załączenie)
 // przełączniki3: środkowy (ciemny) do GND, boczne do pinów
+// LCD: SDA->A4, SCL->A5
 
 // przepisać tablice+npins jako klasę?
 // to: oraz array.size() zamiast nPins http://hackaday.com/2015/11/13/code-craft-embedding-c-timing-virtual-functions/
@@ -34,6 +38,10 @@ const int aThreshold[] = {2, 2};
 const uint8_t nAOutPins = 1;
 const uint8_t aOutPins[] = {10};	// vmeter: g-force
 
+// Set the pins on the I2C chip used for LCD connections:
+//                    addr, en,rw,rs,d4,d5,d6,d7,bl,blpol
+LiquidCrystal_I2C lcd(0x3f, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
+
 // serial port
 #define SERIAL_SPEED 9600
 
@@ -61,6 +69,11 @@ void setup() {
   Serial.println("I");
   // start blink counter
   lastBlink = millis();
+  lcd.begin(16,2);   // initialize the lcd for 16 chars 2 lines, turn on backlight
+  lcd.setCursor(0,0);
+  lcd.print("KSP-Gegi");
+  lcd.setCursor(0,1);
+  lcd.print("Ready for action");
 }
 
 void updateAnalogPin(uint8_t id) {
@@ -145,6 +158,26 @@ void handleSerialInputAnalogOut() {
 	}
 }
 
+// commands like ^P{line:0,1}={text0..15}$ (consume all characters until end of the line)
+void handleSerialInputLCD() {
+    uint8_t id=0, c;
+    id = Serial.parseInt();  // skip '='
+	if (id==0 || id==1) {
+		lcd.setCursor(0,id);
+		c = -1;
+		while (c!='\r' && c!='\n') {
+			if (Serial.available()>0) {
+				c = Serial.read();
+			} else {
+				c = -1;
+			}
+			if (c>0) {
+				lcd.write(c);
+			}
+		}
+	}
+}
+
 void checkSerialInput() {
   uint8_t c;
   if (Serial.available()>0) {
@@ -154,6 +187,9 @@ void checkSerialInput() {
 	}
 	if (c == 'A') {
 	  handleSerialInputAnalogOut();
+	}
+	if (c == 'P') {
+	  handleSerialInputLCD();
 	}
   }
 }

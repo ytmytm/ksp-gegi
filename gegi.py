@@ -37,6 +37,7 @@ orbit	 = vessel.orbit
 lastrcs = control.rcs
 lastsas = control.sas
 lastgear = control.gear
+lastgforce = -100
 overheat = 0
 lowpower = 0
 lowfuel = 0
@@ -83,8 +84,24 @@ while True:
 				lastrcs=None
 				lastsas=None
 				lastgear=None
+				lastgforce=-100
 			if line[:3]=="P0=":
 				control.throttle = int(line[3:],16)/255
+			if line[:3]=="P1=":
+				# timewarp
+				newtimewarp = min(int(line[3:],16)/255/0.9,1)
+				railslevel = int(newtimewarp*7)
+				physlevel = int(newtimewarp*4)
+				print("warp:"+str(newtimewarp)+"\tphys:"+str(physlevel)+"\trail"+str(railslevel))
+				if (conn.space_center.warp_mode == conn.space_center.WarpMode.rails):
+					conn.space_center.rails_warp_factor = railslevel
+				elif (conn.space_center.warp_mode == conn.space_center.WarpMode.physics):
+					conn.space_center.physics_warp_factor = physlevel
+				else:
+				# no time warp - try to set as rails, if failed then try to set as physics
+					conn.space_center.rails_warp_factor = railslevel
+					if (conn.space_center.warp_mode != conn.space_center.WarpMode.rails):
+						conn.space_center.physics_warp_factor = physlevel
 			if line=="D0=1":
 				control.activate_next_stage()
 			if line=="D1=0":
@@ -99,6 +116,17 @@ while True:
 				control.gear=False
 			if line=="D3=1":
 				control.gear=True
+
+		# Status
+		# g-force changed enough?
+		newgforce = vessel.flight().g_force
+		if (abs(newgforce-lastgforce)>0.01):
+			lastgforce = newgforce
+			newgforce = min(abs(newgforce),5)
+			newgforce = int(newgforce*255/5)
+			gforcecommand = "A0="+str(newgforce)+"\n"
+			print(gforcecommand)
+			ser.write(gforcecommand.encode())
 
 		# Warnings
 		# overheat <0.6, .8-.9, >.9
@@ -166,7 +194,6 @@ while True:
 			else:
 				ser.write(b"LG3=0\n")
 				ser.write(b"LR3=1\n")
-
 
 	# local console
 	if kbhit():

@@ -3,7 +3,7 @@
 
 // dł kabelków 15-20cm
 // diody LED: niebieskie (bez rezystora, krótka nóżka) do GND, białe (z rezystorem, długa nóżka) do pinu
-// potencjometr: niebieski z czarną kreską do GND, biały do +5V, niebieski do pinu A0
+// potencjometr: niebieski z czarną kreską do GND, biały do +5V, niebieski do pinu A0 / A1
 // przełączniki2: niebieski do GND, biały do pinu, wszystkie zamontowane tak, aby niebieski był w środku, biały na dole, a niepodłączone u góry (wtedy gałka w górę==załączenie)
 // przełączniki3: środkowy (ciemny) do GND, boczne do pinów
 
@@ -11,8 +11,7 @@
 // to: oraz array.size() zamiast nPins http://hackaday.com/2015/11/13/code-craft-embedding-c-timing-virtual-functions/
 //   ok jeśli będzie niedużo gorsze od 5104 bajtów
 
-const int throttlePin = A0;  // P0
-
+// digital control (switch, red, green)
 const uint8_t nPins = 7; // długość tabel poniżej
 const uint8_t switchPins[] = {4,  5, 8, 12, 0, 0,  0};	// Dx: stage, RCS, SAS, gear switch, overheat, lowpower, lowfuel
 const uint8_t onPins[] =     {0, 13, 9,  0, 0, 0,  0};	// Gx: stage, RCS, SAS, overheat, lowpower, lowfuel ON (green)
@@ -24,12 +23,14 @@ uint8_t lastLedState[] =  {0, 0, 0, 0, 0, 0, 0};	// bits: 0=GxON, 1=RxON, 2=GxBL
 unsigned long lastBlink = 0;
 const unsigned long blinkInterval = 500;
 
-// throttle control
-int lastThrottleValue = 0;
-int throttleValue = 0;
-int throttleMin = 1023;
-int throttleMax = 0;
-#define THROTTLE_THRESHOLD 2
+// analog control
+const uint8_t nAPins = 2;
+const uint8_t aPins[] = {A0, A1};	// pot: throttle, timewarp
+const int lastAValue[] = {0, 0};
+const int aValue[] = {0, 0};
+const int aThreshold[] = {2, 2};
+
+// serial port
 #define SERIAL_SPEED 9600
 
 void setup() {
@@ -58,27 +59,32 @@ void setup() {
   lastBlink = millis();
 }
 
-void updateThrottle() {
-  // read the analog in value:
-  throttleValue = analogRead(throttlePin);
-  // auto calibrate
-  if (throttleValue>throttleMax) { throttleMax=throttleValue; }
-  if (throttleValue<throttleMin) { throttleMin=throttleValue; }
-  // map it to the range of the analog out:
-  throttleValue = map(throttleValue, throttleMin, throttleMax, 0, 255);
-  // is it different enough from last reading?
-  if (abs(throttleValue-lastThrottleValue)>THROTTLE_THRESHOLD) {
-    if (throttleValue<THROTTLE_THRESHOLD) {
-      throttleValue = 0;
-    }
-    if (throttleValue>255-THROTTLE_THRESHOLD) {
-      throttleValue = 255;
-    }
+void updateAnalogPin(uint8_t id) {
+	// read in analog value
+	aValue[id] = analogRead(aPins[id]);
+	// map to the range of the analog out
+	aValue[id] = map(aValue[id], 0, 1023, 0, 255);
+	// is it different enough from the last reading?
+	if (abs(aValue[id]-lastAValue[id])>aThreshold[id]) {
+		if (aValue[id]<aThreshold[id]) {
+			aValue[id] = 0;
+		}
+		if (aValue[id]>255-aThreshold[id]) {
+			aValue[id] = 255;
+		}
     // dump status
-    Serial.print("P0=");
-    Serial.println(throttleValue,HEX);
-    lastThrottleValue = throttleValue;
+	Serial.print("P");
+	Serial.print(id);
+	Serial.print("=");
+	Serial.println(aValue[id],HEX);
+	lastAValue[id] = aValue[id];
   }
+}
+
+void updateAnalogs() {
+	for (uint8_t i=0; i<nAPins; i++) {
+		updateAnalogPin(i);
+	}
 }
 
 uint8_t updateButton(int pin, int id, uint8_t lastState) {
@@ -162,7 +168,7 @@ void updateLeds() {
 }
 
 void loop() {
-  updateThrottle();
+  updateAnalogs();
   updatePins();
   checkSerialInput();
   updateLeds();

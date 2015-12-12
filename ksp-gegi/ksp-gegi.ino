@@ -160,8 +160,10 @@ void handleSerialInputAnalogOut() {
 
 // commands like ^P{line:0,1}={text0..15}$ (consume all characters until end of the line)
 void handleSerialInputLCD() {
-    uint8_t id=0, c;
-    id = Serial.parseInt();  // skip '='
+    uint8_t id=0, i=0, c;
+    id = Serial.parseInt();
+    Serial.read(); // skip '='
+  //  Serial.print("LCDin"); Serial.println(id);
 	if (id==0 || id==1) {
 		lcd.setCursor(0,id);
 		c = -1;
@@ -171,10 +173,16 @@ void handleSerialInputLCD() {
 			} else {
 				c = -1;
 			}
-			if (c>0) {
+			if (c>0 && c!='\r' && c!='\n' && i<16) {
+                                i++;
 				lcd.write(c);
+                                //Serial.print(c,HEX);
 			}
 		}
+                for (;i<16;i++) {
+                  lcd.write(' ');
+                }
+//        Serial.println("endLCD");
 	}
 }
 

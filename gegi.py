@@ -131,8 +131,18 @@ while True:
 			gforcecommand = "A0="+str(newgforce)+"\n"
 			ser.write(gforcecommand.encode())
 		# LCD
-		line = "P0=A:"+si_format(orbit.apoapsis_altitude, precision=2).ljust(7)[:7]+" "+time_format(orbit.time_to_apoapsis)+"\n"
-		line = line+"P1=P:"+si_format(orbit.periapsis_altitude, precision=2).ljust(7)[:7]+" "+time_format(orbit.time_to_periapsis)+"\n"
+		val = orbit.apoapsis_altitude
+		if val>=0:
+			fval = si_format(val, precision=2).rjust(7)[:7]+" "
+		else:
+			fval = si_format(val, precision=2).rjust(8)[:8]
+		line = "P0=A:"+fval+time_format(orbit.time_to_apoapsis)+"\n"
+		val = orbit.periapsis_altitude
+		if val>=0:
+			fval = si_format(val, precision=2).rjust(7)[:7]+" "
+		else:
+			fval = si_format(val, precision=2).rjust(8)[:8]
+		line = line+"P1=P:"+fval+time_format(orbit.time_to_periapsis)+"\n"
 		ser.write(line.encode())
 		# Warnings
 		# overheat <0.6, .8-.9, >.9

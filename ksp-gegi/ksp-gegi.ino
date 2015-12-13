@@ -43,7 +43,7 @@ const uint8_t aOutPins[] = {10};	// vmeter: g-force
 LiquidCrystal_I2C lcd(0x3f, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 
 // serial port
-#define SERIAL_SPEED 9600
+#define SERIAL_SPEED 115200
 
 void setup() {
   // initialize serial communications at 9600 bps:
@@ -241,5 +241,5 @@ void loop() {
   updatePins();
   checkSerialInput();
   updateLeds();
-  delay(200);
+//  delay(200);
 }

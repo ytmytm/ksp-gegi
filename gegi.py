@@ -2,6 +2,8 @@ import krpc
 import time
 import serial
 from msvcrt import kbhit,getch
+from si_prefix import si_format
+from time_format import time_format
 
 conn = None
 while conn==None:
@@ -13,9 +15,9 @@ while conn==None:
 
 print("Connection successful "+conn.krpc.get_status().version)
 
-ser=serial.Serial("COM3",9600,timeout=0.2)
+ser=serial.Serial("COM3",115200,timeout=0.5)
 if not ser.isOpen():
-	print("Can't open COM7!")
+	print("Can't open serial port!")
 
 vessel = None
 while vessel==None:
@@ -125,9 +127,11 @@ while True:
 			newgforce = min(abs(newgforce),5)
 			newgforce = int(newgforce*255/5)
 			gforcecommand = "A0="+str(newgforce)+"\n"
-			print(gforcecommand)
 			ser.write(gforcecommand.encode())
-
+		# LCD
+		line = "P0=A:"+si_format(orbit.apoapsis_altitude, precision=2).ljust(7)[:7]+" "+time_format(orbit.time_to_apoapsis)
+		line = line+"\nP1=P:"+si_format(orbit.periapsis_altitude, precision=2).ljust(7)[:7]+" "+time_format(orbit.time_to_periapsis)
+		ser.write(line.encode())
 		# Warnings
 		# overheat <0.6, .8-.9, >.9
 		if ((temp_pct<0.6) and (overheat!=0)):
@@ -215,4 +219,4 @@ while True:
 		if (k>48) and (k<=57):
 			control.throttle = (k-48)/10
 			
-	#time.sleep(1)
+#	time.sleep(.2)

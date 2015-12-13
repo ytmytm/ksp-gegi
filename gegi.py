@@ -5,19 +5,20 @@ from msvcrt import kbhit,getch
 from si_prefix import si_format
 from time_format import time_format
 
+ser=serial.Serial("COM3",115200,timeout=0.1)
+if not ser.isOpen():
+	print("Can't open serial port!")
+
 conn = None
 while conn==None:
 	try:
 		conn = krpc.connect(name='Arduino')
 	except (krpc.error.NetworkError,ConnectionRefusedError):
 		print("Connection refused, waiting 5s")
+		ser.write("P1=Connecting...\n".encode)
 		time.sleep(5)
 
 print("Connection successful "+conn.krpc.get_status().version)
-
-ser=serial.Serial("COM3",115200,timeout=0.1)
-if not ser.isOpen():
-	print("Can't open serial port!")
 
 vessel = None
 while vessel==None:
@@ -25,12 +26,14 @@ while vessel==None:
 		vessel = conn.space_center.active_vessel
 	except krpc.error.RPCError:
 		print("Not in proper game scene")
+		ser.write("P0=Waiting for\nP1=game scene\n".encode)
 		time.sleep(1)
-		
+
 print("Active vessel:"+vessel.name)
 line = "P0="+conn.krpc.get_status().version+"\n"
 line = line+"P1="+vessel.name+"\n"
 ser.write(line.encode())
+time.sleep(1)
 
 control = vessel.control
 #refframe = vessel.orbit.body.reference_frame

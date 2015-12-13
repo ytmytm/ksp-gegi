@@ -105,6 +105,9 @@ void updateAnalogs() {
 }
 
 uint8_t updateButton(int pin, int id, uint8_t lastState) {
+  if (pin==0) {
+    return(lastState);
+  }
   // reverse logic because switches are connected to GND with internal pullup, so pushed state (ON) is 0V
   uint8_t state = !digitalRead(pin);
   if (state != lastState) {

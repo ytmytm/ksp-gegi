@@ -15,7 +15,7 @@ while conn==None:
 
 print("Connection successful "+conn.krpc.get_status().version)
 
-ser=serial.Serial("COM3",115200,timeout=0.5)
+ser=serial.Serial("COM3",115200,timeout=0.1)
 if not ser.isOpen():
 	print("Can't open serial port!")
 
@@ -28,6 +28,9 @@ while vessel==None:
 		time.sleep(1)
 		
 print("Active vessel:"+vessel.name)
+line = "P0="+conn.krpc.get_status().version+"\n"
+line = line+"P1="+vessel.name+"\n"
+ser.write(line.encode())
 
 control = vessel.control
 #refframe = vessel.orbit.body.reference_frame
@@ -47,17 +50,17 @@ lowfuel = 0
 # may throw krpc.error.RPCError if vessel no longer active/exists,
 # should roll back to vessel = conn.space_center.active_vessel above loop
 while True:
-	print("---------CONTROL")
-	print("SAS:"+str(control.sas)+"\tRCS:"+str(control.rcs))
-	print("Gear:"+str(control.gear)+"\tLights:"+str(control.lights))
-	print("Throttle:"+str(control.throttle))
-	print("---------ORBIT")
-	print("Speed:"+str(round(orbit.speed,2)))
-	print("Apoapsis:"+str(round(orbit.apoapsis_altitude,0))+"\tPeriapsis:"+str(round(orbit.periapsis_altitude,0)))
-	print("Time to:"+str(round(orbit.time_to_apoapsis,0))+" s\tTime to:  "+str(round(orbit.time_to_periapsis,0))+" s")
-	print("---------FLIGHT")
-	print("Altitude: "+str(round(flight().mean_altitude,0))+"\tSpeed: "+str(round(speed().speed,2)))
-	print("Pitch :"+str(round(flight().pitch,1))+"\tRoll :"+str(round(flight().roll,1))+"\t Head :"+str(round(flight().heading,1)))
+	#print("---------CONTROL")
+	#print("SAS:"+str(control.sas)+"\tRCS:"+str(control.rcs))
+	#print("Gear:"+str(control.gear)+"\tLights:"+str(control.lights))
+	#print("Throttle:"+str(control.throttle))
+	#print("---------ORBIT")
+	#print("Speed:"+str(round(orbit.speed,2)))
+	#print("Apoapsis:"+str(round(orbit.apoapsis_altitude,0))+"\tPeriapsis:"+str(round(orbit.periapsis_altitude,0)))
+	#print("Time to:"+str(round(orbit.time_to_apoapsis,0))+" s\tTime to:  "+str(round(orbit.time_to_periapsis,0))+" s")
+	#print("---------FLIGHT")
+	#print("Altitude: "+str(round(flight().mean_altitude,0))+"\tSpeed: "+str(round(speed().speed,2)))
+	#print("Pitch :"+str(round(flight().pitch,1))+"\tRoll :"+str(round(flight().roll,1))+"\t Head :"+str(round(flight().heading,1)))
 
 	try:
 		temp_pct=max([max(part.temperature/part.max_temperature,part.skin_temperature/part.max_skin_temperature) for part in vessel.parts.all])
@@ -74,14 +77,14 @@ while True:
 		fuel_pct = res.amount('LiquidFuel')/rmax
 	else:
 		fuel_pct = 0
-	print("Max heat: "+str(round(temp_pct*100,0))+"\tPower: "+str(round(power_pct*100,0))+"\tL.fuel: "+str(round(fuel_pct*100,0)))
+#	print("Max heat: "+str(round(temp_pct*100,0))+"\tPower: "+str(round(power_pct*100,0))+"\tL.fuel: "+str(round(fuel_pct*100,0)))
 
 	# serial link
 	if ser.isOpen():
 		line = "?"
 		while len(line)>0:
 			line = ser.readline().decode("utf-8").rstrip()
-			print("Serial:["+line+"]\n----\n")
+			#print("Serial:["+line+"]\n----\n")
 			if line=="I":
 				lastrcs=None
 				lastsas=None
@@ -94,7 +97,6 @@ while True:
 				newtimewarp = min(int(line[3:],16)/255/0.9,1)
 				railslevel = int(newtimewarp*7)
 				physlevel = int(newtimewarp*4)
-				print("warp:"+str(newtimewarp)+"\tphys:"+str(physlevel)+"\trail"+str(railslevel))
 				if (conn.space_center.warp_mode == conn.space_center.WarpMode.rails):
 					conn.space_center.rails_warp_factor = railslevel
 				elif (conn.space_center.warp_mode == conn.space_center.WarpMode.physics):
@@ -129,8 +131,8 @@ while True:
 			gforcecommand = "A0="+str(newgforce)+"\n"
 			ser.write(gforcecommand.encode())
 		# LCD
-		line = "P0=A:"+si_format(orbit.apoapsis_altitude, precision=2).ljust(7)[:7]+" "+time_format(orbit.time_to_apoapsis)
-		line = line+"\nP1=P:"+si_format(orbit.periapsis_altitude, precision=2).ljust(7)[:7]+" "+time_format(orbit.time_to_periapsis)
+		line = "P0=A:"+si_format(orbit.apoapsis_altitude, precision=2).ljust(7)[:7]+" "+time_format(orbit.time_to_apoapsis)+"\n"
+		line = line+"P1=P:"+si_format(orbit.periapsis_altitude, precision=2).ljust(7)[:7]+" "+time_format(orbit.time_to_periapsis)+"\n"
 		ser.write(line.encode())
 		# Warnings
 		# overheat <0.6, .8-.9, >.9
@@ -219,4 +221,4 @@ while True:
 		if (k>48) and (k<=57):
 			control.throttle = (k-48)/10
 			
-#	time.sleep(.2)
+#	time.sleep(.1)

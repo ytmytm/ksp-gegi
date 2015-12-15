@@ -244,5 +244,5 @@ void loop() {
   updatePins();
   checkSerialInput();
   updateLeds();
-//  delay(200);
+  delay(100);
 }

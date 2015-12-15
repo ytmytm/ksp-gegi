@@ -167,8 +167,8 @@ void updateAnalogs() {
 }
 
 void updatePins() {
-  for (uint8_t i = 0; i < ndigiPins; ++i) {
-    digiPins[i].updateSwitch();
+  for (auto &p : digiPins) {
+    p.updateSwitch();
   }
 }
 
@@ -180,9 +180,9 @@ void handleSerialInputLed() {
     c = Serial.read();
     id = Serial.parseInt();  // skip '='
     val = Serial.parseInt(); // skip newline
-    for (uint8_t i = 0; i < ndigiPins; ++i) {
-      if (digiPins[i].getId()==id) {
-        digiPins[i].updateLedState(c, val);
+    for (auto &p : digiPins) {
+      if (p.getId()==id) {
+        p.updateLedState(c, val);
       }
 //    Serial.print(c); Serial.print(id); Serial.println(val);  // echo for ack
     }

@@ -33,7 +33,6 @@ digitalPin digiPins[] = {
   digitalPin(5,0,0,7),    // low power
   digitalPin(6,0,0,3)     // low fuel
 };
-const uint8_t ndigiPins = (sizeof(digiPins) / sizeof(digiPins[0]));
 
 digitalPin::digitalPin(const uint8_t id, const uint8_t pinSwitch, const uint8_t pinOn, const uint8_t pinOff) :
   m_id(id), m_pinSwitch(pinSwitch), m_pinOn(pinOn), m_pinOff(pinOff)
@@ -252,8 +251,8 @@ void updateLeds() {
 	  blink = true;
 	  lastBlink = currentMillis;
   }
-  for (uint8_t i = 0; i < ndigiPins; ++i) {
-    digiPins[i].updateLed(blink);
+  for (auto &p : digiPins) {
+    p.updateLed(blink);
   }
 }
 

@@ -11,17 +11,94 @@
 // przełączniki3: środkowy (ciemny) do GND, boczne do pinów
 // LCD: SDA->A4, SCL->A5
 
-// przepisać tablice+npins jako klasę?
-// to: oraz array.size() zamiast nPins http://hackaday.com/2015/11/13/code-craft-embedding-c-timing-virtual-functions/
-//   ok jeśli będzie niedużo gorsze od 5104 bajtów
+class digitalPin {
+  public:
+    digitalPin(const uint8_t id, const uint8_t pinSwitch, const uint8_t pinOn, const uint8_t pinOff);
+    void updateSwitch();
+    void updateLedState(const uint8_t c, const uint8_t val);
+    void updateLed(const bool blink);
+    const uint8_t getId() { return(m_id); }
+  private:
+    const uint8_t m_id, m_pinSwitch, m_pinOn, m_pinOff;
+    uint8_t m_lastPinState;
+    uint8_t m_lastLedState; // bits: 0=GxON, 1=RxON, 2=GxBLINK, 3=RxBLINK
+};
 
-// digital control (switch, red, green)
-const uint8_t nPins = 7; // długość tabel poniżej
-const uint8_t switchPins[] = {4,  5, 8, 12, 0, 0,  0};	// Dx: stage, RCS, SAS, gear switch, overheat, lowpower, lowfuel
-const uint8_t onPins[] =     {0, 13, 9,  0, 0, 0,  0};	// Gx: stage, RCS, SAS, overheat, lowpower, lowfuel ON (green)
-const uint8_t offPins[] =    {0,  0, 0,  0, 6, 7,  3};	// Rx: stage, RCS, SAS, overheat, lowpower, lowfuel OFF (red)
-uint8_t lastPinState[] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
-uint8_t lastLedState[] =  {0, 0, 0, 0, 0, 0, 0};	// bits: 0=GxON, 1=RxON, 2=GxBLINK, 3=RxBLINK
+digitalPin digiPins[] = {
+  digitalPin(0,4,0,0),    // stage (id, pin switch, pin green LED (on), pin red LED (off)
+  digitalPin(1,5,13,0),   // RCS
+  digitalPin(2,8,9,0),    // SAS
+  digitalPin(3,12,0,0),   // gear
+  digitalPin(4,0,0,6),    // overheat
+  digitalPin(5,0,0,7),    // low power
+  digitalPin(6,0,0,3)     // low fuel
+};
+const uint8_t ndigiPins = (sizeof(digiPins) / sizeof(digiPins[0]));
+
+digitalPin::digitalPin(const uint8_t id, const uint8_t pinSwitch, const uint8_t pinOn, const uint8_t pinOff) :
+  m_id(id), m_pinSwitch(pinSwitch), m_pinOn(pinOn), m_pinOff(pinOff)
+{
+  if (m_pinSwitch>0) { pinMode(m_pinSwitch,INPUT_PULLUP); }
+  if (m_pinOn>0) {
+    pinMode(m_pinOn,OUTPUT);
+    digitalWrite(m_pinOn,LOW);
+  }
+  if (m_pinOff>0) {
+    pinMode(m_pinOff,OUTPUT);
+    digitalWrite(m_pinOff,LOW);
+  }
+  m_lastLedState = 0;
+  m_lastPinState = HIGH;
+}
+
+void digitalPin::updateSwitch() {
+  if (m_pinSwitch>0) {
+    // reverse logic because switches are connected to GND with internal pullup, so pushed state (ON) is 0V
+    uint8_t state = !digitalRead(m_pinSwitch);
+    if (state!=m_lastPinState) {
+      Serial.print('D');
+      Serial.print(m_id);
+      Serial.print('=');
+      Serial.println(state);
+    }
+    m_lastPinState = state;
+  }
+}
+
+void digitalPin::updateLedState(uint8_t c, uint8_t val) {
+  uint8_t nval = m_lastLedState;
+  if (c=='G') {
+    nval = nval & 0b11111010;
+    if (val==1) nval=nval | 0x01;
+    if (val==2) nval=nval | 0x01 | 0x04;
+  }
+  if (c=='R') {
+    nval = nval & 0b11110101;
+    if (val==1) nval=nval | 0x02;
+    if (val==2) nval=nval | 0x02 | 0x08;
+  }
+  m_lastLedState = nval;
+}
+
+void digitalPin::updateLed(const bool blink) {
+  uint8_t nstate;
+  if (m_pinOn>0) {
+    nstate = (m_lastLedState & 0x01) ? HIGH : LOW;
+    if (nstate==HIGH && (m_lastLedState & 0x04) && blink) {
+      nstate = !digitalRead(m_pinOn);
+    }
+//Serial.print("L"); Serial.print(gPin); Serial.print(nstate);
+    digitalWrite(m_pinOn,nstate);
+  }
+  if (m_pinOff>0) {
+    nstate = (m_lastLedState & 0x02) ? HIGH : LOW;
+    if (nstate==HIGH && (m_lastLedState & 0x08) && blink) {
+      nstate = !digitalRead(m_pinOff);
+    }
+//Serial.print("R"); Serial.print(rPin); Serial.print(nstate);
+    digitalWrite(m_pinOff,nstate);
+  }
+}
 
 // blinker control
 unsigned long lastBlink = 0;
@@ -48,21 +125,6 @@ LiquidCrystal_I2C lcd(0x3f, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 void setup() {
   // initialize serial communications at 9600 bps:
   Serial.begin(SERIAL_SPEED);
-  // make button pins inputs
-  for (uint8_t i=0; i<nPins; i++) {
-	// switch pin input
-	if (switchPins[i]>0) { pinMode(switchPins[i],INPUT_PULLUP); }
-    // make LED pins outputs+turn off
-	lastLedState[i] = 0;
-	if (onPins[i]>0) {
-          pinMode(onPins[i],OUTPUT);
-          digitalWrite(onPins[i],LOW);
-        }
-        if (offPins[i]>0) {
-          pinMode(offPins[i],OUTPUT);
-          digitalWrite(offPins[i],LOW);
-        }
-  }
   // set timeout to 200ms
   Serial.setTimeout(200);
   // request status update
@@ -104,50 +166,26 @@ void updateAnalogs() {
 	}
 }
 
-uint8_t updateButton(int pin, int id, uint8_t lastState) {
-  if (pin==0) {
-    return(lastState);
-  }
-  // reverse logic because switches are connected to GND with internal pullup, so pushed state (ON) is 0V
-  uint8_t state = !digitalRead(pin);
-  if (state != lastState) {
-    Serial.print('D');
-    Serial.print(id);
-    Serial.print('=');
-    Serial.println(state);
-  }
-  return(state);
-}
-
 void updatePins() {
-	for (uint8_t i=0; i<nPins; i++) {
-		lastPinState[i] = updateButton(switchPins[i],i,lastPinState[i]);
-	}
+  for (uint8_t i = 0; i < ndigiPins; ++i) {
+    digiPins[i].updateSwitch();
+  }
 }
 
 // commands like: ^L{GR}{id}={val}$
 // format: "^LG1=0$" turn off green led 1 (RCS), "^LR2=1$" turn off red led 2 (SCS)
 void handleSerialInputLed() {
     uint8_t c;
-    uint8_t val=0,id=0,nval=0;
+    uint8_t val=0,id=0;
     c = Serial.read();
     id = Serial.parseInt();  // skip '='
     val = Serial.parseInt(); // skip newline
+    for (uint8_t i = 0; i < ndigiPins; ++i) {
+      if (digiPins[i].getId()==id) {
+        digiPins[i].updateLedState(c, val);
+      }
 //    Serial.print(c); Serial.print(id); Serial.println(val);  // echo for ack
-	if (id>=0 && id<=nPins) {
-                nval = lastLedState[id];
-                if (c=='G') {
-                  nval = nval & 0b11111010;
-                  if (val==1) nval=nval | 0x01;
-                  if (val==2) nval=nval | 0x01 | 0x04;
-                }
-                if (c=='R') {
-                  nval = nval & 0b11110101;
-                  if (val==1) nval=nval | 0x02;
-                  if (val==2) nval=nval | 0x02 | 0x08;
-                }
-		lastLedState[id] = nval;
-	}
+    }
 }
 
 // commands like ^A{id}={val}$
@@ -214,28 +252,8 @@ void updateLeds() {
 	  blink = true;
 	  lastBlink = currentMillis;
   }
-//  Serial.print("blink="); Serial.println(blink);
-  // update all leds
-  for (uint8_t i=0; i<nPins; i++) {
-	uint8_t nstate;
-	uint8_t gPin = onPins[i];
-	if (gPin!=0) {
-		nstate = (lastLedState[i] & 0x01) ? HIGH : LOW;
-		if (nstate==HIGH && (lastLedState[i] & 0x04) && blink) {
-			nstate = !digitalRead(gPin);
-		}
-//Serial.print("L"); Serial.print(gPin); Serial.print(nstate);
-		digitalWrite(gPin,nstate);
-	}
-	uint8_t rPin = offPins[i];
-	if (rPin!=0) {
-		nstate = (lastLedState[i] & 0x02) ? HIGH : LOW;
-		if (nstate==HIGH && (lastLedState[i] & 0x08) && blink) {
-			nstate = !digitalRead(rPin);
-		}
-//Serial.print("R"); Serial.print(rPin); Serial.print(nstate);
-		digitalWrite(rPin,nstate);
-	}
+  for (uint8_t i = 0; i < ndigiPins; ++i) {
+    digiPins[i].updateLed(blink);
   }
 }
 
@@ -246,3 +264,4 @@ void loop() {
   updateLeds();
 //  delay(200);
 }
+

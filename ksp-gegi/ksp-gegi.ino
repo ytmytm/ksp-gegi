@@ -60,8 +60,8 @@ void digitalPin::updateSwitch() {
       Serial.print(m_id);
       Serial.print('=');
       Serial.println(state);
+      m_lastPinState = state;
     }
-    m_lastPinState = state;
   }
 }
 
@@ -215,14 +215,14 @@ void handleSerialInputLCD() {
 				c = -1;
 			}
 			if (c>0 && c!='\r' && c!='\n' && i<16) {
-                                i++;
+        i++;
 				lcd.write(c);
-                                //Serial.print(c,HEX);
+        //Serial.print(c,HEX);
 			}
 		}
-                for (;i<16;i++) {
-                  lcd.write(' ');
-                }
+    for (;i<16;i++) {
+      lcd.write(' ');
+    }
 //        Serial.println("endLCD");
 	}
 }
@@ -262,6 +262,6 @@ void loop() {
   updatePins();
   checkSerialInput();
   updateLeds();
-//  delay(200);
+  delay(100);
 }
 

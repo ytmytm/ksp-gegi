@@ -160,7 +160,7 @@ while True:
 		if ((temp_pct>=0.8) and (overheat!=2)):
 			overheat = 2
 			ser.write(b"LG4=0\n")
-			ser.write(b"LR4=2\n")
+			ser.write(b"LR4=3\n")
 		# power
 		if ((power_pct>=.2) and (lowpower!=0)):
 			lowpower = 0
@@ -173,7 +173,7 @@ while True:
 		if ((power_pct<=.1) and (lowpower!=2)):
 			lowpower = 2
 			ser.write(b"LG5=0\n")
-			ser.write(b"LR5=2\n")
+			ser.write(b"LR5=3\n")
 		# fuel
 		if (((fuel_pct>=.2) or (fuel_pct==0)) and (lowfuel!=0)):
 			lowfuel = 0
@@ -186,7 +186,7 @@ while True:
 		if ((fuel_pct<=.1) and (fuel_pct>0) and (lowfuel!=2)):
 			lowpower = 2
 			ser.write(b"LG6=0\n")
-			ser.write(b"LR6=2\n")
+			ser.write(b"LR6=3\n")
 
 		# serial state change
 		if control.rcs!=lastrcs:

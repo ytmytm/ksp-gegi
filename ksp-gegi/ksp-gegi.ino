@@ -66,15 +66,15 @@ void digitalPin::updateSwitch() {
 
 void digitalPin::updateLedState(uint8_t c, uint8_t val) {
   uint8_t nval = m_lastLedState;
+  val = val & 0b00001111;
   if (c=='G') {
-    nval = nval & 0b11111010;
-    if (val==1) nval=nval | 0x01;
-    if (val==2) nval=nval | 0x01 | 0x04;
+    nval = nval & 0b11110000;
+    nval = nval | val;
   }
   if (c=='R') {
-    nval = nval & 0b11110101;
-    if (val==1) nval=nval | 0x02;
-    if (val==2) nval=nval | 0x02 | 0x08;
+    val = val << 4;
+    nval = nval & 0b00001111;
+    nval = nval | val;
   }
   m_lastLedState = nval;
 }
@@ -83,15 +83,15 @@ void digitalPin::updateLed(const bool blink) {
   uint8_t nstate;
   if (m_pinOn>0) {
     nstate = (m_lastLedState & 0x01) ? HIGH : LOW;
-    if (nstate==HIGH && (m_lastLedState & 0x04) && blink) {
+    if (nstate==HIGH && (m_lastLedState & 0x02) && blink) {
       nstate = !digitalRead(m_pinOn);
     }
 //Serial.print("L"); Serial.print(gPin); Serial.print(nstate);
     digitalWrite(m_pinOn,nstate);
   }
   if (m_pinOff>0) {
-    nstate = (m_lastLedState & 0x02) ? HIGH : LOW;
-    if (nstate==HIGH && (m_lastLedState & 0x08) && blink) {
+    nstate = (m_lastLedState & 0x10) ? HIGH : LOW;
+    if (nstate==HIGH && (m_lastLedState & 0x20) && blink) {
       nstate = !digitalRead(m_pinOff);
     }
 //Serial.print("R"); Serial.print(rPin); Serial.print(nstate);

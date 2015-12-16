@@ -99,20 +99,72 @@ void digitalPin::updateLed(const bool blink) {
   }
 }
 
+class analogInPin {
+  public:
+    analogInPin(const uint8_t id, const uint8_t pin, const int threshold);
+    void update();
+  private:
+    const uint8_t m_id, m_pin;
+    const int m_threshold;
+    int m_lastAValue;
+};
+
+analogInPin analogInPins[] = {
+  analogInPin(0,A0,2),  // throttle
+  analogInPin(1,A1,2)	  // timewarp
+};
+
+analogInPin::analogInPin(const uint8_t id, const uint8_t pin, const int threshold) :
+	m_id(id), m_pin(pin), m_threshold(threshold)
+{
+}
+
+void analogInPin::update() {
+	// map to the range of the analog out
+	int aValue = map(analogRead(m_pin), 0, 1023, 0, 255);
+	// is it different enough from the last reading?
+	if (abs(aValue-m_lastAValue)>m_threshold) {
+		if (aValue<m_threshold) {
+			aValue = 0;
+		}
+		if (aValue>255-m_threshold) {
+			aValue = 255;
+		}
+    // dump status
+	Serial.print("P");
+	Serial.print(m_id);
+	Serial.print("=");
+	Serial.println(aValue,HEX);
+	m_lastAValue = aValue;
+  }
+}
+
+class analogOutPin {
+  public:
+    analogOutPin(const uint8_t id, const uint8_t pin);
+    void updateState(const uint8_t val);
+    const uint8_t getId() { return(m_id); }
+  private:
+    const uint8_t m_id, m_pin;
+};
+
+analogOutPin::analogOutPin(const uint8_t id, const uint8_t pin) :
+	m_id(id), m_pin(pin)
+{
+}
+
+void analogOutPin::updateState(const uint8_t val) {
+	analogWrite(m_pin,val);
+}
+
+analogOutPin analogOutPins[] = {
+  analogOutPin(0,10),	// g-force
+  analogOutPin(0,11)  // electrical power
+};
+
 // blinker control
 unsigned long lastBlink = 0;
 const unsigned long blinkInterval = 500;
-
-// analog control input
-const uint8_t nAPins = 2;
-const uint8_t aPins[] = {A0, A1};	// pot: throttle, timewarp
-int lastAValue[] = {0, 0};
-int aValue[] = {0, 0};
-const int aThreshold[] = {2, 2};
-
-// analog control output
-const uint8_t nAOutPins = 1;
-const uint8_t aOutPins[] = {10};	// vmeter: g-force
 
 // Set the pins on the I2C chip used for LCD connections:
 //                    addr, en,rw,rs,d4,d5,d6,d7,bl,blpol
@@ -137,36 +189,22 @@ void setup() {
   lcd.print("Ready for action");
 }
 
-void updateAnalogPin(uint8_t id) {
-	// read in analog value
-	aValue[id] = analogRead(aPins[id]);
-	// map to the range of the analog out
-	aValue[id] = map(aValue[id], 0, 1023, 0, 255);
-	// is it different enough from the last reading?
-	if (abs(aValue[id]-lastAValue[id])>aThreshold[id]) {
-		if (aValue[id]<aThreshold[id]) {
-			aValue[id] = 0;
-		}
-		if (aValue[id]>255-aThreshold[id]) {
-			aValue[id] = 255;
-		}
-    // dump status
-	Serial.print("P");
-	Serial.print(id);
-	Serial.print("=");
-	Serial.println(aValue[id],HEX);
-	lastAValue[id] = aValue[id];
+void updateAnalogs() {
+  for (auto &p : analogInPins) {
+    p.update();
   }
 }
 
-void updateAnalogs() {
-	for (uint8_t i=0; i<nAPins; i++) {
-		updateAnalogPin(i);
-	}
-}
-
 void updatePins() {
+  const unsigned long currentMillis = millis();
+  bool blink = false;
+  // is it time for tick?
+  if (((unsigned long)(currentMillis - lastBlink) >= blinkInterval)) {
+    blink = true;
+    lastBlink = currentMillis;
+  }
   for (auto &p : digiPins) {
+    p.updateLed(blink);
     p.updateSwitch();
   }
 }
@@ -174,11 +212,9 @@ void updatePins() {
 // commands like: ^L{GR}{id}={val}$
 // format: "^LG1=0$" turn off green led 1 (RCS), "^LR2=1$" turn off red led 2 (SCS)
 void handleSerialInputLed() {
-    uint8_t c;
-    uint8_t val=0,id=0;
-    c = Serial.read();
-    id = Serial.parseInt();  // skip '='
-    val = Serial.parseInt(); // skip newline
+    const uint8_t c = Serial.read();
+    const uint8_t id = Serial.parseInt();  // skip '='
+    const uint8_t val = Serial.parseInt(); // skip newline
     for (auto &p : digiPins) {
       if (p.getId()==id) {
         p.updateLedState(c, val);
@@ -189,78 +225,62 @@ void handleSerialInputLed() {
 
 // commands like ^A{id}={val}$
 void handleSerialInputAnalogOut() {
-    uint8_t val=0,id=0;
-    id = Serial.parseInt();  // skip '='
-    val = Serial.parseInt(); // skip newline
-//    Serial.print(id); Serial.println(val);  // echo for ack
-	if (id>=0 && id<=nAOutPins) {
-		analogWrite(aOutPins[id], val);
-	}
+    const uint8_t id = Serial.parseInt();  // skip '='
+    const uint8_t val = Serial.parseInt(); // skip newline
+    for (auto &p : analogOutPins) {
+		  if (p.getId()==id) {
+			  p.updateState(val);
+		  }
+	  }
 }
 
 // commands like ^P{line:0,1}={text0..15}$ (consume all characters until end of the line)
 void handleSerialInputLCD() {
-    uint8_t id=0, i=0, c;
-    id = Serial.parseInt();
+    uint8_t i=0, c;
+    const uint8_t id = Serial.parseInt();
     Serial.read(); // skip '='
-  //  Serial.print("LCDin"); Serial.println(id);
-	if (id==0 || id==1) {
-		lcd.setCursor(0,id);
-		c = -1;
-		while (c!='\r' && c!='\n') {
-			if (Serial.available()>0) {
-				c = Serial.read();
-			} else {
-				c = -1;
-			}
-			if (c>0 && c!='\r' && c!='\n' && i<16) {
-        i++;
-				lcd.write(c);
-        //Serial.print(c,HEX);
-			}
-		}
-    for (;i<16;i++) {
-      lcd.write(' ');
-    }
-//        Serial.println("endLCD");
+//  Serial.print("LCDin"); Serial.println(id);
+	  if (id==0 || id==1) {
+		  lcd.setCursor(0,id);
+		  c = -1;
+		  while (c!='\r' && c!='\n') {
+			  if (Serial.available()>0) {
+				  c = Serial.read();
+			  } else {
+				  c = -1;
+			  }
+			  if (c>0 && c!='\r' && c!='\n' && i<16) {
+          i++;
+				  lcd.write(c);
+          //Serial.print(c,HEX);
+			  }
+		  }
+      for (;i<16;i++) {
+        lcd.write(' ');
+      }
+//    Serial.println("endLCD");
 	}
 }
 
 void checkSerialInput() {
-  uint8_t c;
   if (Serial.available()>0) {
-    c = Serial.read();
-	if (c == 'L') {
-	  handleSerialInputLed();
-	}
-	if (c == 'A') {
-	  handleSerialInputAnalogOut();
-	}
-	if (c == 'P') {
-	  handleSerialInputLCD();
-	}
-  }
-}
-
-// set all LEDs according to state
-void updateLeds() {
-  unsigned long currentMillis = millis();
-  bool blink = false;
-  // is it time for tick?
-  if (((unsigned long)(currentMillis - lastBlink) >= blinkInterval)) {
-	  blink = true;
-	  lastBlink = currentMillis;
-  }
-  for (auto &p : digiPins) {
-    p.updateLed(blink);
+    const uint8_t c = Serial.read();
+    if (c == 'L') {
+	    handleSerialInputLed();
+	  }
+    if (c == 'A') {
+	    handleSerialInputAnalogOut();
+	  }
+    if (c == 'P') {
+	    handleSerialInputLCD();
+	  }
   }
 }
 
 void loop() {
-  updateAnalogs();
-  updatePins();
   checkSerialInput();
-  updateLeds();
+  updatePins();
+  updateAnalogs();
   delay(100);
 }
 

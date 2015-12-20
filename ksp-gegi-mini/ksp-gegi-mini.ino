@@ -28,8 +28,8 @@ class digitalPin {
     void updateSwitch();
     void updateLedState(const uint8_t c, const uint8_t val);
     void updateLed(const bool blink) ;
-    const uint8_t getId() const { return(m_id); }
-    const uint8_t getOnOffBits() const; // return object where serial bits are on/off according to state m_OnLed+m_Offled
+    uint8_t getId() const { return(m_id); }
+    uint8_t getOnOffBits() const; // return object where serial bits are on/off according to state m_OnLed+m_Offled
   private:
     const uint8_t m_id, m_pinSwitch, m_pinOn, m_pinOff;
     uint8_t m_OnLed { LOW };
@@ -121,7 +121,7 @@ void digitalPin::updateLed(const bool blink) {
   }
 }
 
-const uint8_t digitalPin::getOnOffBits() const {
+uint8_t digitalPin::getOnOffBits() const {
   uint8_t nstate = 0;
   if (m_pinOn>=128 && m_OnLed) {
     nstate |= 1 << (m_pinOn & 0x07);

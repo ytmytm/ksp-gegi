@@ -45,7 +45,9 @@ orbit	 = vessel.orbit
 lastrcs = control.rcs
 lastsas = control.sas
 lastgear = control.gear
+lastlights = control.lights
 lastgforce = -100
+stageabort = False
 overheat = 0
 lowpower = 0
 lowfuel = 0
@@ -92,6 +94,7 @@ while True:
 				lastrcs=None
 				lastsas=None
 				lastgear=None
+				lastlights=None
 				lastgforce=-100
 			if line[:3]=="P0=":
 				control.throttle = int(line[3:],16)/255
@@ -109,20 +112,31 @@ while True:
 					conn.space_center.rails_warp_factor = railslevel
 					if (conn.space_center.warp_mode != conn.space_center.WarpMode.rails):
 						conn.space_center.physics_warp_factor = physlevel
-			if line=="D0=1":
-				control.activate_next_stage()
-			if line=="D1=0":
+			if line=="D8=1":
+				if stageabort:
+					control.activate_next_stage()
+				else:
+					control.abort = True
+			if line=="D9=0":
+				stageabort = False;
+			if line=="D9=1":
+				stageabort = True;
+			if line=="D6=0":
 				control.rcs=False
-			if line=="D1=1":
+			if line=="D6=1":
 				control.rcs=True
-			if line=="D2=0":
+			if line=="D7=0":
 				control.sas=False
-			if line=="D2=1":
+			if line=="D7=1":
 				control.sas=True
-			if line=="D3=0":
+			if line=="D5=0":
 				control.gear=False
-			if line=="D3=1":
+			if line=="D5=1":
 				control.gear=True
+			if line=="D4=0":
+				control.lights=False
+			if line=="D4=1":
+				control.lights=True
 
 		# Status
 		# g-force changed enough?
@@ -151,68 +165,76 @@ while True:
 		# overheat <0.6, .8-.9, >.9
 		if ((temp_pct<0.6) and (overheat!=0)):
 			overheat = 0
-			ser.write(b"LG4=1\n")
-			ser.write(b"LR4=0\n")
+			ser.write(b"LG12=1\n")
+			ser.write(b"LR12=0\n")
 		if ((temp_pct>=0.6) and (temp_pct<0.8) and (overheat!=1)):
 			overheat = 1
-			ser.write(b"LG4=0\n")
-			ser.write(b"LR4=1\n")
+			ser.write(b"LG12=0\n")
+			ser.write(b"LR12=1\n")
 		if ((temp_pct>=0.8) and (overheat!=2)):
 			overheat = 2
-			ser.write(b"LG4=0\n")
-			ser.write(b"LR4=3\n")
+			ser.write(b"LG12=0\n")
+			ser.write(b"LR12=3\n")
 		# power
 		if ((power_pct>=.2) and (lowpower!=0)):
 			lowpower = 0
-			ser.write(b"LG5=1\n")
-			ser.write(b"LR5=0\n")
+			ser.write(b"LG11=1\n")
+			ser.write(b"LR11=0\n")
 		if ((power_pct<.2) and (power_pct>.1) and (lowpower!=1)):
 			lowpower = 1
-			ser.write(b"LG5=0\n")
-			ser.write(b"LR5=1\n")
+			ser.write(b"LG11=0\n")
+			ser.write(b"LR11=1\n")
 		if ((power_pct<=.1) and (lowpower!=2)):
 			lowpower = 2
-			ser.write(b"LG5=0\n")
-			ser.write(b"LR5=3\n")
+			ser.write(b"LG11=0\n")
+			ser.write(b"LR11=3\n")
 		# fuel
 		if (((fuel_pct>=.2) or (fuel_pct==0)) and (lowfuel!=0)):
 			lowfuel = 0
-			ser.write(b"LG6=1\n")
-			ser.write(b"LR6=0\n")
+			ser.write(b"LG10=1\n")
+			ser.write(b"LR10=0\n")
 		if ((fuel_pct<.2) and (fuel_pct>.1) and (lowfuel!=1)):
 			lowfuel = 1
-			ser.write(b"LG6=0\n")
-			ser.write(b"LR6=1\n")
+			ser.write(b"LG10=0\n")
+			ser.write(b"LR10=1\n")
 		if ((fuel_pct<=.1) and (fuel_pct>0) and (lowfuel!=2)):
 			lowpower = 2
-			ser.write(b"LG6=0\n")
-			ser.write(b"LR6=3\n")
+			ser.write(b"LG10=0\n")
+			ser.write(b"LR10=3\n")
 
 		# serial state change
 		if control.rcs!=lastrcs:
 			lastrcs = control.rcs
 			if lastrcs:
-				ser.write(b"LG1=1\n")
-				ser.write(b"LR1=0\n")
+				ser.write(b"LG6=1\n")
+				ser.write(b"LR6=0\n")
 			else:
-				ser.write(b"LG1=0\n")
-				ser.write(b"LR1=1\n")
+				ser.write(b"LG6=0\n")
+				ser.write(b"LR6=1\n")
 		if control.sas!=lastsas:
 			lastsas = control.sas
 			if lastsas:
-				ser.write(b"LG2=1\n")
-				ser.write(b"LR2=0\n")
+				ser.write(b"LG7=1\n")
+				ser.write(b"LR7=0\n")
 			else:
-				ser.write(b"LG2=0\n")
-				ser.write(b"LR2=1\n")
+				ser.write(b"LG7=0\n")
+				ser.write(b"LR7=1\n")
 		if control.gear!=lastgear:
 			lastgear = control.gear
 			if lastgear:
-				ser.write(b"LG3=1\n")
-				ser.write(b"LR3=0\n")
+				ser.write(b"LG5=1\n")
+				ser.write(b"LR5=0\n")
 			else:
-				ser.write(b"LG3=0\n")
-				ser.write(b"LR3=1\n")
+				ser.write(b"LG5=0\n")
+				ser.write(b"LR5=1\n")
+		if control.lights!=lastlights:
+			lastligths = control.lights
+			if lastlights:
+				ser.write(b"LG4=1\n")
+				ser.write(b"LR4=0\n")
+			else:
+				ser.write(b"LG4=0\n")
+				ser.write(b"LR4=1\n")
 
 	# local console
 	if kbhit():

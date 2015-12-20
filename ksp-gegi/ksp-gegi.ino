@@ -16,12 +16,12 @@ class digitalPin {
     digitalPin(const uint8_t id, const uint8_t pinSwitch, const uint8_t pinOn, const uint8_t pinOff);
     void updateSwitch();
     void updateLedState(const uint8_t c, const uint8_t val);
-    void updateLed(const bool blink);
-    const uint8_t getId() { return(m_id); }
+    void updateLed(const bool blink) const ;
+    const uint8_t getId() const { return(m_id); }
   private:
     const uint8_t m_id, m_pinSwitch, m_pinOn, m_pinOff;
-    uint8_t m_lastPinState;
-    uint8_t m_lastLedState; // bits: 0=GxON, 1=RxON, 2=GxBLINK, 3=RxBLINK
+    uint8_t m_lastPinState { HIGH } ;
+    uint8_t m_lastLedState { 0 } ; // bits: 0=GxON, 1=RxON, 2=GxBLINK, 3=RxBLINK
 };
 
 digitalPin digiPins[] = {
@@ -37,7 +37,9 @@ digitalPin digiPins[] = {
 digitalPin::digitalPin(const uint8_t id, const uint8_t pinSwitch, const uint8_t pinOn, const uint8_t pinOff) :
   m_id(id), m_pinSwitch(pinSwitch), m_pinOn(pinOn), m_pinOff(pinOff)
 {
-  if (m_pinSwitch>0) { pinMode(m_pinSwitch,INPUT_PULLUP); }
+  if (m_pinSwitch>0) {
+    pinMode(m_pinSwitch,INPUT_PULLUP);
+  }
   if (m_pinOn>0) {
     pinMode(m_pinOn,OUTPUT);
     digitalWrite(m_pinOn,LOW);
@@ -46,8 +48,6 @@ digitalPin::digitalPin(const uint8_t id, const uint8_t pinSwitch, const uint8_t 
     pinMode(m_pinOff,OUTPUT);
     digitalWrite(m_pinOff,LOW);
   }
-  m_lastLedState = 0;
-  m_lastPinState = HIGH;
 }
 
 void digitalPin::updateSwitch() {
@@ -79,7 +79,7 @@ void digitalPin::updateLedState(uint8_t c, uint8_t val) {
   m_lastLedState = nval;
 }
 
-void digitalPin::updateLed(const bool blink) {
+void digitalPin::updateLed(const bool blink) const {
   uint8_t nstate;
   if (m_pinOn>0) {
     nstate = (m_lastLedState & 0x01) ? HIGH : LOW;
@@ -106,7 +106,7 @@ class analogInPin {
   private:
     const uint8_t m_id, m_pin;
     const int m_threshold;
-    int m_lastAValue;
+    int m_lastAValue { 0 };
 };
 
 analogInPin analogInPins[] = {
@@ -142,8 +142,8 @@ void analogInPin::update() {
 class analogOutPin {
   public:
     analogOutPin(const uint8_t id, const uint8_t pin);
-    void updateState(const uint8_t val);
-    const uint8_t getId() { return(m_id); }
+    void updateState(const uint8_t val) const ;
+    const uint8_t getId() const { return(m_id); }
   private:
     const uint8_t m_id, m_pin;
 };
@@ -153,7 +153,7 @@ analogOutPin::analogOutPin(const uint8_t id, const uint8_t pin) :
 {
 }
 
-void analogOutPin::updateState(const uint8_t val) {
+void analogOutPin::updateState(const uint8_t val) const {
 	analogWrite(m_pin,val);
 }
 

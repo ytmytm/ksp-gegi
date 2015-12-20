@@ -2,18 +2,21 @@
 #include <Arduino.h>
 
 // dł kabelków 15-20cm
-// diody LED: niebieskie (bez rezystora, krótka nóżka) do GND, białe (z rezystorem, długa nóżka) do pinu
-// potencjometr: niebieski z czarną kreską do GND, biały do +5V, niebieski do pinu A0 / A1
 // przełączniki2: niebieski do GND, biały do pinu, wszystkie zamontowane tak, aby niebieski był w środku, biały na dole, a niepodłączone u góry (wtedy gałka w górę==załączenie)
-// przełączniki3: środkowy (ciemny) do GND, boczne do pinów
+// przełączniki3: środkowy (ciemny) do GND, boczne do pinów, zamontowany bokiem
 
 // 595:
-// 15  A1 SCRCK(13) // clock
-// 16  A2 SERIN(3)  // data
-// 17  A3 RCK(12)   // latch
+// 15=A1 SCRCK(13) // clock
+// 16=A2 SERIN(3)  // data
+// 17=A3 RCK(12)   // latch
 // /SRCLR(8) -> +5V
 // /G (9) -> GND
 // /DRAINx = GND od LEDa (LED niebieskie, bez rezystora, krótka nożka do drain; białe, z rezystorem, długa nóżka do +5V)
+
+// UART:
+// receive commands like: ^L{GR}{id}={val}$
+// format: "^LG1=0$" turn off green led 1, "^LR2=1$" turn off red led 2
+// bits val=0 (OFF), val=1 (ON), val=3 (ON+BLINK)
 
 const uint8_t clockPin = A1;  // SCRCK (13)
 const uint8_t dataPin  = A2;  // SERIN (3)
@@ -35,6 +38,7 @@ class digitalPin {
     uint8_t m_lastLedState { 0 } ; // bits: 0=GxON, 1=RxON, 2=GxBLINK, 3=RxBLINK
 };
 
+// id=0..12
 digitalPin digiPins[] = {
   digitalPin(0,2,0,0),    // OLED mode1 switch 2
   digitalPin(1,3,0,0),    // OLED mode2 switch 3
@@ -47,8 +51,8 @@ digitalPin digiPins[] = {
   digitalPin(8,10,0,0),    // stage, switch pin 10
   digitalPin(9,11,0,0),    // stagemode, switch pin 11
   digitalPin(10,0,0,12),    // low fuel, yellow led 12
-  digitalPin(11,0,0,13),    // low fuel, yellow led 13
-  digitalPin(12,0,0,A0),    // low fuel, red led 14=A0
+  digitalPin(11,0,0,13),    // low power, yellow led 13
+  digitalPin(12,0,0,A0),    // overheat, red led 14=A0
 };
 
 digitalPin::digitalPin(const uint8_t id, const uint8_t pinSwitch, const uint8_t pinOn, const uint8_t pinOff) :
@@ -72,9 +76,9 @@ void digitalPin::updateSwitch() {
     // reverse logic because switches are connected to GND with internal pullup, so pushed state (ON) is 0V
     uint8_t state = !digitalRead(m_pinSwitch);
     if (state!=m_lastPinState) {
-      Serial.print('D');
+      Serial.write('D');
       Serial.print(m_id);
-      Serial.print('=');
+      Serial.write('=');
       Serial.println(state);
       m_lastPinState = state;
     }
@@ -176,8 +180,6 @@ void updatePins() {
   serialShiftWrite(shiftLeds);
 }
 
-// commands like: ^L{GR}{id}={val}$
-// format: "^LG1=0$" turn off green led 1 (RCS), "^LR2=1$" turn off red led 2 (SCS)
 void handleSerialInputLed() {
     const uint8_t c = Serial.read();
     const uint8_t id = Serial.parseInt();  // skip '='

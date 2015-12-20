@@ -11,7 +11,9 @@
 // 17=A3 RCK(12)   // latch
 // /SRCLR(8) -> +5V
 // /G (9) -> GND
-// /DRAINx = GND od LEDa (LED niebieskie, bez rezystora, krótka nożka do drain; białe, z rezystorem, długa nóżka do +5V)
+// VCC (2) -> +5V
+// GND (19,10,11) -> GND
+// /DRAINx (4,5,6,7;14,15,16,17) = GND od LEDa (LED niebieskie, bez rezystora, krótka nożka do drain; białe, z rezystorem, długa nóżka do +5V)
 
 // UART:
 // receive commands like: ^L{GR}{id}={val}$

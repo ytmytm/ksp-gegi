@@ -3,6 +3,8 @@
 #include <Wire.h>
 // https://bitbucket.org/fmalpartida/new-liquidcrystal/downloads
 #include <LiquidCrystal_I2C.h> // Using version 1.2.1
+// https://github.com/MHeironimus/ArduinoJoystickLibrary
+#include <Joystick.h>
 
 // IDE: Arduino/Genuino Micro
 
@@ -32,6 +34,9 @@ analogOutPin analogOutPins[] = {
   analogOutPin(1,10)    // electrical power
 };
 
+// Stage/Abort status (on=stage, off=abort
+uint8_t stageabort = 1;
+
 // Set the pins on the I2C chip used for LCD connections:
 //                    addr, en,rw,rs,d4,d5,d6,d7,bl,blpol
 LiquidCrystal_I2C lcd(0x3f, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
@@ -53,6 +58,8 @@ void setup() {
   lcd.print("KSP-Gegi");
   lcd.setCursor(0,1);
   lcd.print("Ready for action");
+  // joystick setup
+  Joystick.begin(false);	// don't do auto send state
   // request status update
   Serial.println("I");
 }
@@ -97,6 +104,36 @@ void handleSerialInputLCD() {
   }
 }
 
+// called after UART slave reports button press/release
+void handleSlaveButton(const uint8_t id, const uint8_t state) {
+	// handle stage switch
+	uint8_t buttonId = 0x80;
+	switch (id) {
+		case 4:
+			buttonId = 5;
+			break;
+		case 5:
+			buttonId = 4;
+			break;
+		case 6:
+			buttonId = 2;
+			break;
+		case 7:
+			buttonId = 3;
+			break;
+		case 8:
+			buttonId = stageabort ? 1 : 0;
+			break;
+		case 9:
+			stageabort = state;	// on=abort, off=stage
+			break;
+	}
+//Serial.print("id,state,buttonid,stageabort="); Serial.print(id); Serial.write(' '); Serial.print(state); Serial.write(' '); Serial.print(buttonId); Serial.write(' '); Serial.println(stageabort);
+	if (buttonId < 0x80) {
+		Joystick.setButton(buttonId,state);
+	}
+}
+
 // pass data from USB host (PC) to UART
 // - handle own devices (consume this data)
 // - pass everything else to mini slave
@@ -124,13 +161,21 @@ void checkSerialInputUARTtoUSB() {
   while (Serial1.available()) {
 		c = Serial1.read();
 		Serial.write(c);
+		if (c == 'D') {
+			const uint8_t id = Serial1.parseInt();  // skip '='
+			const uint8_t state = Serial1.parseInt(); // skip newline
+			Serial.print(id);
+			Serial.write('=');
+			Serial.println(state);
+			handleSlaveButton(id,state);
+		}
 	}
 }
 
 void loop() {
   checkSerialInputUSBtoUART();
   checkSerialInputUARTtoUSB();
-  // send joystick state
+  Joystick.sendState();
   delay(200);
 }
 

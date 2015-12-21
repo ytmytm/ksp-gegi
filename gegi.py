@@ -47,6 +47,7 @@ lastsas = control.sas
 lastgear = control.gear
 lastlights = control.lights
 lastgforce = -100
+lastpowerpct = -100
 stageabort = False
 overheat = 0
 lowpower = 0
@@ -96,6 +97,7 @@ while True:
 				lastgear=None
 				lastlights=None
 				lastgforce=-100
+				lastpowerpct=-100
 			if line[:3]=="P0=":
 				control.throttle = int(line[3:],16)/255
 			if line[:3]=="P1=":
@@ -176,6 +178,11 @@ while True:
 			ser.write(b"LG12=0\n")
 			ser.write(b"LR12=3\n")
 		# power
+		if (abs(power_pct-lastpowerpct)>0.01):
+			lastpowerpct=power_pct
+			newpower=int(power_pct*255)
+			powercommand = "A1="+str(newpower)+"\n"
+			ser.write(powercommand.encode())
 		if ((power_pct>=.2) and (lowpower!=0)):
 			lowpower = 0
 			ser.write(b"LG11=1\n")

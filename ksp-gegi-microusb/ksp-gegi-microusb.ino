@@ -20,6 +20,9 @@ uint8_t joy2switch = 0;
 
 // almost copy from ksp-gegi-mini!
 
+// used from within digitalPin class (not nice, I know!)
+void handleSlaveButton(const uint8_t id, const uint8_t state);
+
 class digitalPin {
   public:
     digitalPin(const uint8_t id, const uint8_t pinSwitch);
@@ -27,7 +30,6 @@ class digitalPin {
     uint8_t getId() { return(m_id); }
     uint8_t getSwitchState() const { return(m_lastPinState); }
   private:
-    void updateJoystick() const;
     const uint8_t m_id, m_pinSwitch;
     uint8_t m_lastPinState { HIGH } ;
 };
@@ -55,24 +57,9 @@ void digitalPin::updateSwitch() {
       Serial.write('=');
       Serial.println(state);
       m_lastPinState = state;
-      updateJoystick();
+      // map to joystick events
+      handleSlaveButton(m_id,m_lastPinState);
     }
-  }
-}
-
-// map to joystick events
-void digitalPin::updateJoystick() const {
-  uint8_t buttonId = 0x80;
-  switch (m_id) {
-    case 10:
-      buttonId = 6;
-      break;
-    case 11:
-      buttonId = 7;
-      break;
-  }
-  if (buttonId < 0x80) {
-    Joystick.setButton(buttonId,m_lastPinState);
   }
 }
 
@@ -274,7 +261,13 @@ void handleSlaveButton(const uint8_t id, const uint8_t state) {
 		case 9:
 			stageabort = state;	// on=abort, off=stage
 			break;
-	}
+    case 10:
+      buttonId = 6;
+      break;
+    case 11:
+      buttonId = 7;
+      break;
+  }
 //Serial.print("id,state,buttonid,stageabort="); Serial.print(id); Serial.write(' '); Serial.print(state); Serial.write(' '); Serial.print(buttonId); Serial.write(' '); Serial.println(stageabort);
 	if (buttonId < 0x80) {
 		Joystick.setButton(buttonId,state);
@@ -322,7 +315,6 @@ void checkSerialInputUARTtoUSB() {
 void updateAnalogs() {
   for (auto &p : analogInPins) {
     p.update();
-	// map to joystick axes
   }
 }
 

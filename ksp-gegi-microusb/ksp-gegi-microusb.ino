@@ -77,7 +77,7 @@ class analogInPin {
 };
 
 analogInPin analogInPins[] = {
-  analogInPin(0,A4,2),  // throttle
+  analogInPin(0,A6,2),  // throttle
   analogInPin(1,A8,5),	// timewarp
   analogInPin(2,A0,2),	// joy1x
   analogInPin(3,A1,2),	// joy1y

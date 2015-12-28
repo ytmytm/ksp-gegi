@@ -4,6 +4,7 @@
 // IDE: Arduino Mini, ATmega168
 
 // dł kabelków 15-20cm
+// diody LED z uC: niebieskie (bez rezystora, krótka nóżka) do GND, białe (z rezystorem, długa nóżka) do pinu
 // przełączniki2: niebieski do GND, biały do pinu, wszystkie zamontowane tak, aby niebieski był w środku, biały na dole, a niepodłączone u góry (wtedy gałka w górę==załączenie)
 // przełączniki3: środkowy (ciemny) do GND, boczne do pinów, zamontowany bokiem
 

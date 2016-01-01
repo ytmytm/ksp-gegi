@@ -183,8 +183,8 @@ void setup() {
   // initialize serial communications
   Serial.begin(SERIAL_SPEED);
   Serial1.begin(SERIAL_SPEED);
-  // wait for USB device
-  while (!Serial);
+  // don't wait for USB device, we don't care if port has been opened
+  // while (!Serial);
   // set timeout to 200ms
   Serial.setTimeout(200);
   // start blink counter

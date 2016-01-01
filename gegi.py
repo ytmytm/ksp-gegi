@@ -5,7 +5,7 @@ from msvcrt import kbhit,getch
 from si_prefix import si_format
 from time_format import time_format
 
-ser=serial.Serial("COM3",115200,timeout=0.1)
+ser=serial.Serial("COM21",115200,timeout=0.1)
 if not ser.isOpen():
 	print("Can't open serial port!")
 

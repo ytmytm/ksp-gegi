@@ -80,10 +80,10 @@ class analogInPin {
 analogInPin analogInPins[] = {
   analogInPin(0,A6,2),  // throttle
   analogInPin(1,A8,5),	// timewarp
-  analogInPin(2,A0,2),	// joy1x
-  analogInPin(3,A1,2),	// joy1y
-  analogInPin(4,A2,2),	// joy2x
-  analogInPin(5,A3,2),	// joy2y
+  analogInPin(2,A1,2),	// joy1x
+  analogInPin(3,A0,2),	// joy1y
+  analogInPin(4,A3,2),	// joy2x
+  analogInPin(5,A2,2),	// joy2y
 };
 
 analogInPin::analogInPin(const uint8_t id, const uint8_t pin, const int threshold) :

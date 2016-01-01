@@ -74,6 +74,7 @@ class analogInPin {
     const uint8_t m_id, m_pin;
     const int m_threshold;
     int m_lastAValue { 0 };
+    int m_lastRValue { 0 };
 };
 
 analogInPin analogInPins[] = {
@@ -92,7 +93,8 @@ analogInPin::analogInPin(const uint8_t id, const uint8_t pin, const int threshol
 
 void analogInPin::update() {
 	// map to the range of the analog out
-	int aValue = map(analogRead(m_pin), 0, 1023, 0, 255);
+	m_lastRValue = analogRead(m_pin);
+	int aValue = map(m_lastRValue, 0, 1023, 0, 255);
 	// is it different enough from the last reading?
 	if (abs(aValue-m_lastAValue)>m_threshold) {
 		if (aValue<m_threshold) {
@@ -119,21 +121,21 @@ void analogInPin::updateJoystick() const {
 			break;
 		case 2:	// joy1x X on: rotation, off: axis
 			if (joy2switch) {
-				Joystick.setXAxisRotation(m_lastAValue-127);
+				Joystick.setXAxisRotation(map(m_lastRValue, 0, 1023, 0, 359));
 			} else {
 				Joystick.setXAxis(m_lastAValue-127);
 			}
 			break;
 		case 3: // joy1y Y on: rotation, off: axis
 			if (joy2switch) {
-				Joystick.setYAxisRotation(m_lastAValue-127);
+				Joystick.setYAxisRotation(map(m_lastRValue, 0, 1023, 0, 359));
 			} else {
 				Joystick.setYAxis(m_lastAValue-127);
 			}
 			break;
 		case 4: // joy2x Z on: rotation, off: axis
 			if (joy1switch) {
-				Joystick.setZAxisRotation(m_lastAValue-127);
+				Joystick.setZAxisRotation(map(m_lastRValue, 0, 1023, 0, 359));
 			} else {
 				Joystick.setZAxis(m_lastAValue-127);
 			}

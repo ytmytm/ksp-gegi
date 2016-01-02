@@ -30,7 +30,7 @@ const uint8_t latchPin = A3;  // RCK (12)
 class digitalPin {
   public: // pinOn/Off - 0-127=hw pin, 128+[0..7]=serial pin
     digitalPin(const uint8_t id, const uint8_t pinSwitch, const uint8_t pinOn, const uint8_t pinOff);
-    void updateSwitch();
+    void updateSwitch(const bool force);
     void updateLedState(const uint8_t c, const uint8_t val);
     void updateLed(const bool blink) ;
     uint8_t getId() const { return(m_id); }
@@ -51,8 +51,8 @@ digitalPin digiPins[] = {
   digitalPin(3,5,0,0),    // LCD mode2 switch 5
   digitalPin(4,6,0+0x80,4+0x80),    // light, switch pin 6, green led 0, red led 4
   digitalPin(5,7,1+0x80,5+0x80),    // gear, switch pin 7, green led 1, red led 5
-  digitalPin(6,8,2+0x80,6+0x80),    // RCS, switch pin 8, green led 2, red led 6
-  digitalPin(7,9,3+0x80,7+0x80),    // SAS, switch pin 9, green led 3, red led 7
+  digitalPin(6,9,3+0x80,7+0x80),    // RCS, switch pin 9, green led 3, red led 7
+  digitalPin(7,8,2+0x80,6+0x80),    // SAS, switch pin 8, green led 2, red led 6
   digitalPin(8,10,0,0),    // stage, switch pin 10
   digitalPin(9,11,0,0),    // stagemode, switch pin 11
   digitalPin(10,0,0,12),    // low fuel, yellow led 12
@@ -76,11 +76,11 @@ digitalPin::digitalPin(const uint8_t id, const uint8_t pinSwitch, const uint8_t 
   }
 }
 
-void digitalPin::updateSwitch() {
+void digitalPin::updateSwitch(const bool force) {
   if (m_pinSwitch>0) {
     // reverse logic because switches are connected to GND with internal pullup, so pushed state (ON) is 0V
     uint8_t state = !digitalRead(m_pinSwitch);
-    if (state!=m_lastPinState) {
+    if (force || (state!=m_lastPinState)) {
       Serial.write('D');
       Serial.print(m_id);
       Serial.write('=');
@@ -168,7 +168,7 @@ void setup() {
   lastBlink = millis();
 }
 
-void updatePins() {
+void updatePins(const bool force) {
   const unsigned long currentMillis = millis();
   bool blink = false;
   uint8_t shiftLeds = 0;
@@ -179,7 +179,7 @@ void updatePins() {
   }
   for (auto &p : digiPins) {
     p.updateLed(blink);
-    p.updateSwitch();
+    p.updateSwitch(force);
     shiftLeds |= p.getOnOffBits();
   }
   serialShiftWrite(shiftLeds);
@@ -197,18 +197,27 @@ void handleSerialInputLed() {
     }
 }
 
+void handleStatusReset() {
+  // pass own status
+  updatePins(true);
+  // request status update
+  Serial.println("I");
+}
+
 void checkSerialInput() {
   if (Serial.available()>0) {
     const uint8_t c = Serial.read();
     if (c == 'L') {
-	    handleSerialInputLed();
-	  }
+        handleSerialInputLed();
+    }
+    else if (c == 'R') {
+        handleStatusReset();
+    }
   }
 }
 
 void loop() {
   checkSerialInput();
-  updatePins();
+  updatePins(false);
   delay(100);
 }
-

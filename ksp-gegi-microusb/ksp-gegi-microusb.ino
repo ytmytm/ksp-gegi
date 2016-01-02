@@ -26,7 +26,7 @@ void handleSlaveButton(const uint8_t id, const uint8_t state);
 class digitalPin {
   public:
     digitalPin(const uint8_t id, const uint8_t pinSwitch);
-    void updateSwitch();
+    void updateSwitch(const bool force);
     uint8_t getId() { return(m_id); }
     uint8_t getSwitchState() const { return(m_lastPinState); }
   private:
@@ -47,11 +47,11 @@ digitalPin::digitalPin(const uint8_t id, const uint8_t pinSwitch) :
   }
 }
 
-void digitalPin::updateSwitch() {
+void digitalPin::updateSwitch(const bool force) {
   if (m_pinSwitch>0) {
     // reverse logic because switches are connected to GND with internal pullup, so pushed state (ON) is 0V
     uint8_t state = !digitalRead(m_pinSwitch);
-    if (state!=m_lastPinState) {
+    if (force || (state!=m_lastPinState)) {
       Serial.write('D');
       Serial.print(m_id);
       Serial.write('=');
@@ -68,7 +68,7 @@ void digitalPin::updateSwitch() {
 class analogInPin {
   public:
     analogInPin(const uint8_t id, const uint8_t pin, const int threshold);
-    void update();
+    void update(const bool force);
   private:
     void updateJoystick() const;
     const uint8_t m_id, m_pin;
@@ -91,12 +91,12 @@ analogInPin::analogInPin(const uint8_t id, const uint8_t pin, const int threshol
 {
 }
 
-void analogInPin::update() {
+void analogInPin::update(const bool force) {
 	// map to the range of the analog out
 	m_lastRValue = analogRead(m_pin);
 	int aValue = map(m_lastRValue, 0, 1023, 0, 255);
 	// is it different enough from the last reading?
-	if (abs(aValue-m_lastAValue)>m_threshold) {
+	if (force || abs(aValue-m_lastAValue)>m_threshold) {
 		if (aValue<m_threshold) {
 			aValue = 0;
 		}
@@ -276,6 +276,16 @@ void handleSlaveButton(const uint8_t id, const uint8_t state) {
 	}
 }
 
+void handleStatusReset() {
+  // pass own status
+  updatePins(true);
+  updateAnalogs(true);
+  // ask slave to update status
+  Serial1.println("R");
+  // request status update
+  Serial.println("I");
+}
+
 // pass data from USB host (PC) to UART
 // - handle own devices (consume this data)
 // - pass everything else to mini slave
@@ -288,6 +298,9 @@ void checkSerialInputUSBtoUART() {
     }
     else if (c == 'P') {
       handleSerialInputLCD();
+    }
+    else if (c == 'R') {
+      handleStatusReset();
     }
 	  else {
       Serial1.write(c);
@@ -314,29 +327,30 @@ void checkSerialInputUARTtoUSB() {
 	}
 }
 
-void updateAnalogs() {
+void updateAnalogs(const bool force) {
   for (auto &p : analogInPins) {
-    p.update();
+    p.update(force);
   }
 }
 
-void updatePins() {
+void updatePins(const bool force) {
   for (auto &p : digiPins) {
-    p.updateSwitch();
-	// remember state so analog axes are updated accordingly
-	if (p.getId()==10) {
-		joy1switch = p.getSwitchState();
-	}
-	if (p.getId()==11) {
-		joy2switch = p.getSwitchState();
-	}
+    p.updateSwitch(force);
+    // remember state so analog axes are updated accordingly
+    if (p.getId()==10) {
+        joy1switch = p.getSwitchState();
+    }
+    if (p.getId()==11) {
+        joy2switch = p.getSwitchState();
+    }
   }
 }
 
 void loop() {
   checkSerialInputUSBtoUART();
   checkSerialInputUARTtoUSB();
-  updatePins();
-  updateAnalogs();
+  updatePins(false);
+  updateAnalogs(false);
   delay(50);
 }
+

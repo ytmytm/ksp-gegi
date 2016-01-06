@@ -34,6 +34,9 @@ line = line+"P1="+vessel.name+"\n"
 ser.write(line.encode())
 time.sleep(1)
 
+# ask for status
+ser.write(b"R\n")
+
 control = vessel.control
 #refframe = vessel.orbit.body.reference_frame
 #refframe = vessel.orbit.body.non_rotating_reference_frame

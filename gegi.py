@@ -4,7 +4,7 @@ import serial
 from si_prefix import si_format
 from time_format import time_format
 
-ser=serial.Serial("COM21",115200,timeout=0.1)
+ser=serial.Serial("COM21",115200,timeout=0.01)
 if not ser.isOpen():
 	print("Can't open serial port!")
 
@@ -90,10 +90,9 @@ while True:
 
 	# serial link
 	if ser.isOpen():
-		line = "?"
-		while len(line)>0:
+		while ser.inWaiting()>0:
 			line = ser.readline().decode("utf-8").rstrip()
-			#print("Serial:["+line+"]\n----\n")
+			print("Serial:["+line+"]\n----\n")
 			if line=="I":
 				lastrcs=None
 				lastsas=None
@@ -266,4 +265,5 @@ while True:
 			else:
 				ser.write(b"LG4=0\n")
 				ser.write(b"LR4=1\n")
-#	time.sleep(.1)
+	ser.flush()
+	time.sleep(.01)

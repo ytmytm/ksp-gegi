@@ -299,7 +299,7 @@ void checkSerialInputUSBtoUART() {
     else if (c == 'P') {
       handleSerialInputLCD();
     }
-    else if (c == 'R') {
+    else if ((c == 'R') & (Serial.peek()=='\n')) {
       handleStatusReset();
     }
 	  else {

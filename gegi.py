@@ -54,6 +54,7 @@ stageabort = False
 overheat = 0
 lowpower = 0
 lowfuel = 0
+lcdmode = 0
 
 # may throw krpc.error.RPCError if vessel no longer active/exists,
 # should roll back to vessel = conn.space_center.active_vessel above loop
@@ -141,6 +142,14 @@ while True:
 				control.lights=False
 			if line=="D4=1":
 				control.lights=True
+			if line=="D3=1":
+				lcdmode = 2 # left=target
+			if line=="D3=0":
+				lcdmode = 0 # middle=orbit
+			if line=="D2=0":
+				lcdmode = 0 # middle=orbit
+			if line=="D2=1":
+				lcdmode = 1 # right=surface
 
 		# Status
 		# g-force changed enough?
@@ -152,18 +161,31 @@ while True:
 			gforcecommand = "A0="+str(newgforce)+"\n"
 			ser.write(gforcecommand.encode())
 		# LCD
-		val = orbit.apoapsis_altitude
-		if val>=0:
-			fval = si_format(val, precision=2).rjust(7)[:7]+" "
-		else:
-			fval = si_format(val, precision=2).rjust(8)[:8]
-		line = "P0=A:"+fval+time_format(orbit.time_to_apoapsis)+"\n"
-		val = orbit.periapsis_altitude
-		if val>=0:
-			fval = si_format(val, precision=2).rjust(7)[:7]+" "
-		else:
-			fval = si_format(val, precision=2).rjust(8)[:8]
-		line = line+"P1=P:"+fval+time_format(orbit.time_to_periapsis)+"\n"
+		if lcdmode==0: # switch on middle = Orbit
+			val = orbit.apoapsis_altitude
+			if val>=0:
+				fval = si_format(val, precision=2).rjust(7)[:7]+" "
+			else:
+				fval = si_format(val, precision=2).rjust(8)[:8]
+			line = "P0=A:"+fval+time_format(orbit.time_to_apoapsis)+"\n"
+			val = orbit.periapsis_altitude
+			if val>=0:
+				fval = si_format(val, precision=2).rjust(7)[:7]+" "
+			else:
+				fval = si_format(val, precision=2).rjust(8)[:8]
+			line = line+"P1=P:"+fval+time_format(orbit.time_to_periapsis)+"\n"
+		elif lcdmode==1: # switch on right = Landing Altitude+Speed
+			fval = si_format(flight().surface_altitude, precision=3).rjust(8)[:8]
+			line = "P0=ALT:"+fval+"m\nP1=V"+chr(126)
+			ss = flight().speed
+			vs = flight().vertical_speed
+			fval = si_format(abs((ss*ss-vs*vs)**(1/2)), precision=0).rjust(4)[:4]
+			line = line+fval+" v"
+			fval = si_format(abs(vs), precision=0).rjust(5)[:5]
+			line = line+fval+"m/s\n"
+		elif lcdmode==2: # switch on left = Target(?)
+			line="P0=Mode 1 Left\nP1=Target mode\n"
+		#print("mode"+str(lcdmode)+" "+line)
 		ser.write(line.encode())
 		# Warnings
 		# overheat <0.6, .8-.9, >.9

@@ -266,4 +266,4 @@ while True:
 				ser.write(b"LG4=0\n")
 				ser.write(b"LR4=1\n")
 	ser.flush()
-	time.sleep(.01)
+	#time.sleep(.01)

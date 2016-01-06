@@ -122,10 +122,10 @@ while True:
 					control.activate_next_stage()
 				else:
 					control.abort = True
-			if line=="D9=0":
-				stageabort = False;
 			if line=="D9=1":
-				stageabort = True;
+				stageabort = False; # left = abort
+			if line=="D9=0":
+				stageabort = True;  # right = stage
 			if line=="D6=0":
 				control.rcs=False
 			if line=="D6=1":

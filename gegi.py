@@ -1,7 +1,6 @@
 import krpc
 import time
 import serial
-from msvcrt import kbhit,getch
 from si_prefix import si_format
 from time_format import time_format
 
@@ -242,25 +241,4 @@ while True:
 			else:
 				ser.write(b"LG4=0\n")
 				ser.write(b"LR4=1\n")
-
-	# local console
-	if kbhit():
-		k = ord(getch())
-		if k == 13:
-			control.activate_next_stage()
-		if k == ord('s'):
-			control.sas = not control.sas
-		if k == ord('r'):
-			control.rcs = not control.rcs
-		if k == ord('g'):
-			control.gear = not control.gear
-		if k == ord('l'):
-			control.lights = not control.lights
-		if k == ord('b'):
-			control.brakes = not control.brakes
-		if k == ord('0'):
-			control.throttle = 0
-		if (k>48) and (k<=57):
-			control.throttle = (k-48)/10
-			
 #	time.sleep(.1)

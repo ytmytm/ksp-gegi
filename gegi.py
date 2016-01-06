@@ -103,7 +103,7 @@ while True:
 				lastpowerpct=-100
 			if line[:3]=="P0=":
 				control.throttle = int(line[3:],16)/255
-			if line[:3]=="P1=":
+			if line[:3]=="P1x=": # remove 'x' to enable back
 				# timewarp
 				newtimewarp = min(int(line[3:],16)/255/0.9,1)
 				railslevel = int(newtimewarp*7)

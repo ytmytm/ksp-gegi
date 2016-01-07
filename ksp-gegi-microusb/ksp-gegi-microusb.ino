@@ -5,6 +5,9 @@
 #include <LiquidCrystal_I2C.h> // Using version 1.2.1
 // https://github.com/MHeironimus/ArduinoJoystickLibrary
 #include <Joystick.h>
+#include "U8glib.h"
+
+U8GLIB_SSD1306_128X64_2X u8g(U8G_I2C_OPT_DEV_0|U8G_I2C_OPT_NO_ACK|U8G_I2C_OPT_FAST); // more RAM used, FAST transfer
 
 // IDE: Arduino/Genuino Micro
 
@@ -346,11 +349,53 @@ void updatePins(const bool force) {
   }
 }
 
+uint8_t offset = 0;
+
+void draw(void) {
+  // graphic commands to redraw the complete screen should be placed here  
+  u8g.setFont(u8g_font_unifont);
+  u8g.drawStr( 0+0, 20+0, "Hello!");
+  u8g.drawStr( 0+2, 20+16, "Hello!");
+  
+  u8g.drawBox(0, 0, 17, 17);
+  u8g.drawBox(u8g.getWidth()-20, 0, 3, 3);
+  u8g.drawBox(u8g.getWidth()-9, u8g.getHeight()-9, 9, 9);
+  u8g.drawBox(0, u8g.getHeight()-12, 12, 12);  
+}
+
+void rotate(void) {
+  static  uint8_t dir = 0;
+  static  unsigned long next_rotation = 0;
+  
+  if ( next_rotation < millis() )
+  {
+    switch(dir) {
+      case 0: u8g.undoRotation(); break;
+      case 1: u8g.setRot90(); break;
+      case 2: u8g.setRot180(); break;
+      case 3: u8g.setRot270(); offset = ( offset + 1 ) & 0x0f; break;
+    }
+    
+    dir++;
+    dir &= 3;
+    next_rotation = millis();
+    next_rotation += 1000;
+  }
+}
+
 void loop() {
   checkSerialInputUSBtoUART();
   checkSerialInputUARTtoUSB();
   updatePins(false);
   updateAnalogs(false);
   delay(50);
+  // screen rotation 
+  rotate();
+  
+  // picture loop
+  u8g.firstPage();  
+  do {
+    draw();
+  } while( u8g.nextPage() );
 }
 

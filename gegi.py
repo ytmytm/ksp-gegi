@@ -4,9 +4,18 @@ import serial
 from si_prefix import si_format
 from time_format import time_format
 
-ser=serial.Serial("COM21",115200,timeout=0.01)
+ser=serial.Serial(port="COM21",baudrate=115200,timeout=0,write_timeout=0)
 if not ser.isOpen():
 	print("Can't open serial port!")
+
+lastmsg = time.time();
+
+def myserwrite(line):
+	global lastmsg
+	print(str(round((time.time()-lastmsg)*1000))+"\t")
+	lastmsg = time.time();
+	print(line)
+	ser.write(line)
 
 conn = None
 while conn==None:
@@ -14,7 +23,7 @@ while conn==None:
 		conn = krpc.connect(name='Arduino')
 	except (krpc.error.NetworkError,ConnectionRefusedError):
 		print("Connection refused, waiting 5s")
-		ser.write("P1=Connecting...\n".encode)
+		myserwrite("P1=Connecting...\n".encode)
 		time.sleep(5)
 
 print("Connection successful "+conn.krpc.get_status().version)
@@ -25,17 +34,17 @@ while vessel==None:
 		vessel = conn.space_center.active_vessel
 	except krpc.error.RPCError:
 		print("Not in proper game scene")
-		ser.write("P0=Waiting for\nP1=game scene\n".encode)
+		myserwrite("P0=Waiting for\nP1=game scene\n".encode)
 		time.sleep(1)
 
 print("Active vessel:"+vessel.name)
 line = "P0="+conn.krpc.get_status().version+"\n"
 line = line+"P1="+vessel.name+"\n"
-ser.write(line.encode())
+myserwrite(line.encode())
 time.sleep(1)
 
 # ask for status
-ser.write(b"R\n")
+myserwrite(b"R\n")
 
 control = vessel.control
 #refframe = vessel.orbit.body.reference_frame
@@ -51,9 +60,9 @@ lastlights = control.lights
 lastgforce = -100
 lastpowerpct = -100
 stageabort = False
-overheat = 0
-lowpower = 0
-lowfuel = 0
+overheat = 3
+lowpower = 3
+lowfuel = 3
 lcdmode = 0
 
 # may throw krpc.error.RPCError if vessel no longer active/exists,
@@ -158,7 +167,7 @@ while True:
 			newgforce = min(abs(newgforce),5)
 			newgforce = int(newgforce*255/5)
 			gforcecommand = "A0="+str(newgforce)+"\n"
-			ser.write(gforcecommand.encode())
+			myserwrite(gforcecommand.encode())
 		# LCD
 		if lcdmode==0: # switch on middle = Orbit
 			val = orbit.apoapsis_altitude
@@ -185,85 +194,85 @@ while True:
 		elif lcdmode==2: # switch on left = Target(?)
 			line="P0=Mode 1 Left\nP1=Target mode\n"
 		#print("mode"+str(lcdmode)+" "+line)
-		ser.write(line.encode())
+		myserwrite(line.encode())
 		# Warnings
 		# overheat <0.6, .8-.9, >.9
 		if ((temp_pct<0.6) and (overheat!=0)):
 			overheat = 0
-			ser.write(b"LG12=1\n")
-			ser.write(b"LR12=0\n")
+			myserwrite(b"LG12=1\n")
+			myserwrite(b"LR12=0\n")
 		if ((temp_pct>=0.6) and (temp_pct<0.8) and (overheat!=1)):
 			overheat = 1
-			ser.write(b"LG12=0\n")
-			ser.write(b"LR12=1\n")
+			myserwrite(b"LG12=0\n")
+			myserwrite(b"LR12=1\n")
 		if ((temp_pct>=0.8) and (overheat!=2)):
 			overheat = 2
-			ser.write(b"LG12=0\n")
-			ser.write(b"LR12=3\n")
+			myserwrite(b"LG12=0\n")
+			myserwrite(b"LR12=3\n")
 		# power
 		if (abs(power_pct-lastpowerpct)>0.01):
 			lastpowerpct=power_pct
 			newpower=int(power_pct*255)
 			powercommand = "A1="+str(newpower)+"\n"
-			ser.write(powercommand.encode())
+			myserwrite(powercommand.encode())
 		if ((power_pct>=.2) and (lowpower!=0)):
 			lowpower = 0
-			ser.write(b"LG11=1\n")
-			ser.write(b"LR11=0\n")
+			myserwrite(b"LG11=1\n")
+			myserwrite(b"LR11=0\n")
 		if ((power_pct<.2) and (power_pct>.1) and (lowpower!=1)):
 			lowpower = 1
-			ser.write(b"LG11=0\n")
-			ser.write(b"LR11=1\n")
+			myserwrite(b"LG11=0\n")
+			myserwrite(b"LR11=1\n")
 		if ((power_pct<=.1) and (lowpower!=2)):
 			lowpower = 2
-			ser.write(b"LG11=0\n")
-			ser.write(b"LR11=3\n")
+			myserwrite(b"LG11=0\n")
+			myserwrite(b"LR11=3\n")
 		# fuel
 		if (((fuel_pct>=.2) or (fuel_pct==0)) and (lowfuel!=0)):
 			lowfuel = 0
-			ser.write(b"LG10=1\n")
-			ser.write(b"LR10=0\n")
+			myserwrite(b"LG10=1\n")
+			myserwrite(b"LR10=0\n")
 		if ((fuel_pct<.2) and (fuel_pct>.1) and (lowfuel!=1)):
 			lowfuel = 1
-			ser.write(b"LG10=0\n")
-			ser.write(b"LR10=1\n")
+			myserwrite(b"LG10=0\n")
+			myserwrite(b"LR10=1\n")
 		if ((fuel_pct<=.1) and (fuel_pct>0) and (lowfuel!=2)):
 			lowpower = 2
-			ser.write(b"LG10=0\n")
-			ser.write(b"LR10=3\n")
+			myserwrite(b"LG10=0\n")
+			myserwrite(b"LR10=3\n")
 
 		# serial state change
 		if control.rcs!=lastrcs:
 			lastrcs = control.rcs
 			if lastrcs:
-				ser.write(b"LG6=1\n")
-				ser.write(b"LR6=0\n")
+				myserwrite(b"LG6=1\n")
+				myserwrite(b"LR6=0\n")
 			else:
-				ser.write(b"LG6=0\n")
-				ser.write(b"LR6=1\n")
+				myserwrite(b"LG6=0\n")
+				myserwrite(b"LR6=1\n")
 		if control.sas!=lastsas:
 			lastsas = control.sas
 			if lastsas:
-				ser.write(b"LG7=1\n")
-				ser.write(b"LR7=0\n")
+				myserwrite(b"LG7=1\n")
+				myserwrite(b"LR7=0\n")
 			else:
-				ser.write(b"LG7=0\n")
-				ser.write(b"LR7=1\n")
+				myserwrite(b"LG7=0\n")
+				myserwrite(b"LR7=1\n")
 		if control.gear!=lastgear:
 			lastgear = control.gear
 			if lastgear:
-				ser.write(b"LG5=1\n")
-				ser.write(b"LR5=0\n")
+				myserwrite(b"LG5=1\n")
+				myserwrite(b"LR5=0\n")
 			else:
-				ser.write(b"LG5=0\n")
-				ser.write(b"LR5=1\n")
+				myserwrite(b"LG5=0\n")
+				myserwrite(b"LR5=1\n")
 		if control.lights!=lastlights:
 			lastligths = control.lights
 			if lastlights:
-				ser.write(b"LG4=1\n")
-				ser.write(b"LR4=0\n")
+				myserwrite(b"LG4=1\n")
+				myserwrite(b"LR4=0\n")
 			else:
-				ser.write(b"LG4=0\n")
-				ser.write(b"LR4=1\n")
+				myserwrite(b"LG4=0\n")
+				myserwrite(b"LR4=1\n")
 	ser.flush()
 	#time.sleep(.01)

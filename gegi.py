@@ -5,17 +5,26 @@ from si_prefix import si_format
 from time_format import time_format
 
 ser=serial.Serial(port="COM21",baudrate=115200,timeout=0,write_timeout=0)
+
 if not ser.isOpen():
 	print("Can't open serial port!")
 
-lastmsg = time.time();
+lastflush = time.time()
+serbuffer = b"\n"
 
 def myserwrite(line):
-	global lastmsg
-	print(str(round((time.time()-lastmsg)*1000))+"\t")
-	lastmsg = time.time();
-	print(line)
-	ser.write(line)
+	global serbuffer
+	serbuffer = serbuffer+line
+
+def myserflush():
+	global lastflush
+	global serbuffer
+	print("Flush!"+str(round((time.time()-lastflush)*1000))+"\t")
+	lastflush = time.time()
+	ser.write(serbuffer)
+#	print(str(serbuffer))
+	serbuffer = b"\n"
+	ser.flush()
 
 conn = None
 while conn==None:
@@ -101,7 +110,7 @@ while True:
 	if ser.isOpen():
 		while ser.inWaiting()>0:
 			line = ser.readline().decode("utf-8").rstrip()
-			print("Serial:["+line+"]\n----\n")
+#			print("Serial:["+line+"]\n----\n")
 			if line=="I":
 				lastrcs=None
 				lastsas=None
@@ -111,7 +120,7 @@ while True:
 				lastpowerpct=-100
 			if line[:3]=="P0=":
 				control.throttle = int(line[3:],16)/255
-			if line[:3]=="P1x=": # remove 'x' to enable back
+			if line[:3]=="P1=":
 				# timewarp
 				newtimewarp = min(int(line[3:],16)/255/0.9,1)
 				railslevel = int(newtimewarp*7)
@@ -267,12 +276,12 @@ while True:
 				myserwrite(b"LG5=0\n")
 				myserwrite(b"LR5=1\n")
 		if control.lights!=lastlights:
-			lastligths = control.lights
+			lastlights = control.lights
 			if lastlights:
 				myserwrite(b"LG4=1\n")
 				myserwrite(b"LR4=0\n")
 			else:
 				myserwrite(b"LG4=0\n")
 				myserwrite(b"LR4=1\n")
-	ser.flush()
-	#time.sleep(.01)
+	myserflush()
+#	time.sleep(.1)

@@ -182,6 +182,9 @@ LiquidCrystal_I2C lcd(0x3f, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 // serial port
 #define SERIAL_SPEED 115200
 
+// used below
+void oledRedraw();
+
 void setup() {
   // initialize serial communications
   Serial.begin(SERIAL_SPEED);
@@ -260,12 +263,13 @@ uint8_t oledBuf[OLEDBUFSIZE+1] = { 0x01,0x00,0x20,0x4b,0x53,0x50,0x2d,0x47,0x65,
 #define OLED_DRAW_HLINE 5 // followed by x y width
 #define OLED_DRAW_VLINE 6 // followed by x y height
 #define OLED_DRAW_LINE  7 // followed by x1 y1 x2 y2
+#define OLED_DRAW_CIRCLE 8 // followed by x y radius
 
 void drawOLED(void) {
   // graphic commands to redraw the complete screen should be placed here
   u8g.setFont(u8g_font_unifontr); // reduced font, only glyphs 0x20-0x7f
-  uint8_t i=0;
-  uint8_t cmd, x, y, w, h, x2, y2;
+  uint16_t i=0;
+  uint8_t cmd, x, y, w, h, x2, y2, radius;
   while ((i<OLEDBUFSIZE) && oledBuf[i]!=0) {
     cmd = oledBuf[i++];
     if (OLED_DRAW_STOP==cmd) break; // stop immediately if commanded
@@ -309,16 +313,18 @@ void drawOLED(void) {
 //          Serial.print("x2="); Serial.print(x2); Serial.print(" y2="); Serial.println(y2);
           u8g.drawLine(x,y,x2,y2);
           break;
+        case OLED_DRAW_CIRCLE:
+          radius = oledBuf[i++];
+//          Serial.print("rad="); Serial.println(radius);
+          u8g.drawCircle(x,y,radius);
+          break;
     }
   }
 }
 
 // read a string of gfx commands and keep them in a buffer so drawOLED() can use them
-// test:
-// O3 0 0 10 16 3 10 0 10 24 3 0 16 127 16 4 23 23 5 15 55 100 6 64 15 70 7 15 15 120 90 1 0 16 Line1\ 1 0 32 Line2\ 1 0 48 Line3\ 7 120 15 15 90
-// O7,128,0,0,15,7,128,0,32,15,7,128,0,64,15,7,128,64,0,48,7,128,64,32,48,7,128,64,64,48,1,0,32,KSP\,1,0,48,Ready\
 void handleSerialInputOLED() {
-  uint8_t i=0;
+  uint16_t i=0;
   uint8_t cmd, c;
 //  Serial.println("OLEDstart");
   while ((i<OLEDBUFSIZE) && (Serial.available()>0) && (Serial.peek()!= '\n')) {
@@ -343,6 +349,7 @@ void handleSerialInputOLED() {
           oledBuf[i++] = Serial.parseInt(); // read two more bytes (one here, one below)
         case OLED_DRAW_HLINE:
         case OLED_DRAW_VLINE:
+        case OLED_DRAW_CIRCLE:
           oledBuf[i++] = Serial.parseInt(); // read one more byte
         case OLED_DRAW_STOP:
         case OLED_DRAW_PIXEL:

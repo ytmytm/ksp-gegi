@@ -74,7 +74,7 @@ class analogInPin {
   public:
     analogInPin(const uint8_t id, const uint8_t pin, const int threshold);
     void update(const bool force);
-    uint8_t getAValue() const;
+    uint8_t getAValue() const { return (m_lastAValue); };
   private:
     void updateJoystick() const;
     const uint8_t m_id, m_pin;
@@ -118,10 +118,6 @@ void analogInPin::update(const bool force) {
 		// map to joystick events
 		updateJoystick();
 	}
-}
-
-uint8_t analogInPin::getAValue(void) const {
-	return (m_lastAValue);
 }
 
 void analogInPin::updateJoystick() const {

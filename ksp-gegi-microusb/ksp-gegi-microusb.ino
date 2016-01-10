@@ -190,7 +190,6 @@ void setup() {
   // while (!Serial);
   // set timeout to 200ms
   Serial.setTimeout(200);
-  // start blink counter
   lcd.begin(16,2);   // initialize the lcd for 16 chars 2 lines, turn on backlight
   lcd.setCursor(0,0);
   lcd.print("KSP-Gegi");
@@ -198,6 +197,8 @@ void setup() {
   lcd.print("Ready for action");
   // joystick setup
   Joystick.begin(true);	// do auto send state
+  // show something on OLED
+  oledRedraw();
   // request status update
   Serial.println("I");
 }
@@ -240,6 +241,126 @@ void handleSerialInputLCD() {
     }
 //    Serial.println("endLCD");
   }
+}
+
+#define OLEDBUFSIZE 512
+// initialization stuff
+uint8_t oledBuf[OLEDBUFSIZE+1] = { 0x01,0x00,0x20,0x4b,0x53,0x50,0x2d,0x47,0x65,0x67,0x69,0x00,
+  0x01,0x00,0x30,0x52,0x65,0x61,0x64,0x79,0x20,0x66,0x6F,0x72,0x20,0x61,0x63,0x74,0x69,0x6F,0x6E,0x00,
+  7,128,0,0,15,7,128,0,32,15,7,128,0,64,15,
+  7,128,64,0,49,7,128,64,32,49,7,128,64,64,49,
+  0x00 };
+
+// OLED commands
+#define OLED_DRAW_STOP  0
+#define OLED_DRAW_STR   1 // followed by x y string\, like "Line2\"
+#define OLED_DRAW_BOX   2 // followed by x y width height
+#define OLED_DRAW_FRAME 3 // followed by x y width height
+#define OLED_DRAW_PIXEL 4 // followed by x y
+#define OLED_DRAW_HLINE 5 // followed by x y width
+#define OLED_DRAW_VLINE 6 // followed by x y height
+#define OLED_DRAW_LINE  7 // followed by x1 y1 x2 y2
+
+void drawOLED(void) {
+  // graphic commands to redraw the complete screen should be placed here
+  u8g.setFont(u8g_font_unifontr); // reduced font, only glyphs 0x20-0x7f
+  uint8_t i=0;
+  uint8_t cmd, x, y, w, h, x2, y2;
+  while ((i<OLEDBUFSIZE) && oledBuf[i]!=0) {
+    cmd = oledBuf[i++];
+    if (OLED_DRAW_STOP==cmd) break; // stop immediately if commanded
+    x=oledBuf[i++]; y=oledBuf[i++];
+//    Serial.print("cmd"); Serial.print(cmd); Serial.print(" x="); Serial.print(x); Serial.print(" y="); Serial.println(y);
+    switch(cmd) {
+        case OLED_DRAW_STR:
+//          Serial.print("["); Serial.print((const char*)&oledBuf[i]); Serial.println("]");
+          u8g.drawStr(x,y,(const char*)&oledBuf[i]);
+          // skip to the end of string;
+          while (i<OLEDBUFSIZE && oledBuf[i]!=0) {
+            i++;
+          }
+          i++; // skip past ending 0
+          break;
+        case OLED_DRAW_BOX:
+          w = oledBuf[i++]; h = oledBuf[i++];
+//          Serial.print("w="); Serial.print(w); Serial.print(" h="); Serial.println(h);
+          u8g.drawBox(x,y,w,h);
+          break;
+        case OLED_DRAW_FRAME:
+          w = oledBuf[i++]; h = oledBuf[i++];
+//          Serial.print("w="); Serial.print(w); Serial.print(" h="); Serial.println(h);
+          u8g.drawFrame(x,y,w,h);
+          break;
+        case OLED_DRAW_PIXEL:
+          u8g.drawPixel(x,y);
+          break;
+        case OLED_DRAW_HLINE:
+          w = oledBuf[i++];
+//          Serial.print("w="); Serial.println(w);
+          u8g.drawHLine(x,y,w);
+          break;
+        case OLED_DRAW_VLINE:
+          h = oledBuf[i++];
+//          Serial.print("h="); Serial.println(h);
+          u8g.drawVLine(x,y,h);
+          break;
+        case OLED_DRAW_LINE:
+          x2 = oledBuf[i++]; y2 = oledBuf[i++];
+//          Serial.print("x2="); Serial.print(x2); Serial.print(" y2="); Serial.println(y2);
+          u8g.drawLine(x,y,x2,y2);
+          break;
+    }
+  }
+}
+
+// read a string of gfx commands and keep them in a buffer so drawOLED() can use them
+// test:
+// O3 0 0 10 16 3 10 0 10 24 3 0 16 127 16 4 23 23 5 15 55 100 6 64 15 70 7 15 15 120 90 1 0 16 Line1\ 1 0 32 Line2\ 1 0 48 Line3\ 7 120 15 15 90
+// O7,128,0,0,15,7,128,0,32,15,7,128,0,64,15,7,128,64,0,48,7,128,64,32,48,7,128,64,64,48,1,0,32,KSP\,1,0,48,Ready\
+void handleSerialInputOLED() {
+  uint8_t i=0;
+  uint8_t cmd, c;
+//  Serial.println("OLEDstart");
+  while ((i<OLEDBUFSIZE) && (Serial.available()>0) && (Serial.peek()!= '\n')) {
+    cmd = Serial.parseInt();
+    oledBuf[i++] = cmd;
+    oledBuf[i++] = Serial.parseInt(); // x
+    oledBuf[i++] = Serial.parseInt(); // y
+    switch(cmd) {
+        case OLED_DRAW_STR:
+          Serial.read();  // skip separator
+          while (i<OLEDBUFSIZE) {
+            while (Serial.available()==0) { };
+            c = Serial.read();
+            if (c == '\\') break; // end marker
+            oledBuf[i++] = c;
+          }
+          oledBuf[i++] = '\0'; // string terminator
+          break;
+        case OLED_DRAW_BOX:
+        case OLED_DRAW_FRAME:
+        case OLED_DRAW_LINE:
+          oledBuf[i++] = Serial.parseInt(); // read two more bytes (one here, one below)
+        case OLED_DRAW_HLINE:
+        case OLED_DRAW_VLINE:
+          oledBuf[i++] = Serial.parseInt(); // read one more byte
+        case OLED_DRAW_STOP:
+        case OLED_DRAW_PIXEL:
+          break;
+    }
+  }
+  oledBuf[i]=0; // command string terminator
+//  Serial.println("OLEDredraw");
+  oledRedraw();
+//  Serial.println("OLEDend");
+}
+
+void oledRedraw() {
+  // redraw screen
+  u8g.firstPage();
+  do {
+    drawOLED();
+  } while( u8g.nextPage() );
 }
 
 // called after UART slave reports button press/release
@@ -302,6 +423,9 @@ void checkSerialInputUSBtoUART() {
     else if (c == 'P') {
       handleSerialInputLCD();
     }
+    else if (c == 'O') {
+      handleSerialInputOLED();
+    }
     else if ((c == 'R') & (Serial.peek()=='\n')) {
       handleStatusReset();
     }
@@ -349,53 +473,10 @@ void updatePins(const bool force) {
   }
 }
 
-uint8_t offset = 0;
-
-void draw(void) {
-  // graphic commands to redraw the complete screen should be placed here  
-  u8g.setFont(u8g_font_unifont);
-  u8g.drawStr( 0+0, 20+0, "Hello!");
-  u8g.drawStr( 0+2, 20+16, "Hello!");
-  
-  u8g.drawBox(0, 0, 17, 17);
-  u8g.drawBox(u8g.getWidth()-20, 0, 3, 3);
-  u8g.drawBox(u8g.getWidth()-9, u8g.getHeight()-9, 9, 9);
-  u8g.drawBox(0, u8g.getHeight()-12, 12, 12);  
-}
-
-void rotate(void) {
-  static  uint8_t dir = 0;
-  static  unsigned long next_rotation = 0;
-  
-  if ( next_rotation < millis() )
-  {
-    switch(dir) {
-      case 0: u8g.undoRotation(); break;
-      case 1: u8g.setRot90(); break;
-      case 2: u8g.setRot180(); break;
-      case 3: u8g.setRot270(); offset = ( offset + 1 ) & 0x0f; break;
-    }
-    
-    dir++;
-    dir &= 3;
-    next_rotation = millis();
-    next_rotation += 1000;
-  }
-}
-
 void loop() {
   checkSerialInputUSBtoUART();
   checkSerialInputUARTtoUSB();
   updatePins(false);
   updateAnalogs(false);
-  delay(50);
-  // screen rotation 
-  rotate();
-  
-  // picture loop
-  u8g.firstPage();  
-  do {
-    draw();
-  } while( u8g.nextPage() );
 }
 

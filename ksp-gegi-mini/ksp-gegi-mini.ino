@@ -27,6 +27,8 @@ const uint8_t clockPin = A1;  // SCRCK (13)
 const uint8_t dataPin  = A2;  // SERIN (3)
 const uint8_t latchPin = A3;  // RCK (12)
 
+bool testMode = true;	// in test mode we can blink lights without Python!
+
 class digitalPin {
   public: // pinOn/Off - 0-127=hw pin, 128+[0..7]=serial pin
     digitalPin(const uint8_t id, const uint8_t pinSwitch, const uint8_t pinOn, const uint8_t pinOff);
@@ -35,6 +37,7 @@ class digitalPin {
     void updateLed(const bool blink) ;
     uint8_t getId() const { return(m_id); }
     uint8_t getOnOffBits() const; // return object where serial bits are on/off according to state m_OnLed+m_Offled
+    uint8_t getSwitchState() const { return(m_lastPinState); }
   private:
     const uint8_t m_id, m_pinSwitch, m_pinOn, m_pinOff;
     uint8_t m_OnLed { LOW };
@@ -198,6 +201,8 @@ void handleSerialInputLed() {
 }
 
 void handleStatusReset() {
+  // disable test mode
+  testMode = false;
   // pass own status
   updatePins(true);
   // request status update
@@ -216,8 +221,24 @@ void checkSerialInput() {
   }
 }
 
+void handleTestMode() {
+	for (auto &p : digiPins) {
+		if (p.getSwitchState()) {
+			p.updateLedState('G',1);
+			p.updateLedState('R',0);
+		} else {
+			p.updateLedState('G',0);
+			p.updateLedState('R',1);
+		}
+	}
+}
+
 void loop() {
+  if (testMode) {
+	  handleTestMode();
+  }
   checkSerialInput();
   updatePins(false);
   delay(100);
 }
+

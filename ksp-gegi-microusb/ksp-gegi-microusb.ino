@@ -21,6 +21,8 @@ uint8_t joy1switch = 0;
 // joy2 switch status - change meaning of joy1 axes (X:on=rotate, off=axis; Y:on=rotate, off=axis)
 uint8_t joy2switch = 0;
 
+bool testMode = true;	// in test mode we can blink lights without Python!
+
 // almost copy from ksp-gegi-mini!
 
 // used from within digitalPin class (not nice, I know!)
@@ -72,6 +74,7 @@ class analogInPin {
   public:
     analogInPin(const uint8_t id, const uint8_t pin, const int threshold);
     void update(const bool force);
+    uint8_t getAValue() const;
   private:
     void updateJoystick() const;
     const uint8_t m_id, m_pin;
@@ -115,6 +118,10 @@ void analogInPin::update(const bool force) {
 		// map to joystick events
 		updateJoystick();
 	}
+}
+
+uint8_t analogInPin::getAValue(void) const {
+	return (m_lastAValue);
 }
 
 void analogInPin::updateJoystick() const {
@@ -408,6 +415,8 @@ void handleSlaveButton(const uint8_t id, const uint8_t state) {
 }
 
 void handleStatusReset() {
+  // disable test mode
+  testMode = false;
   // pass own status
   updatePins(true);
   updateAnalogs(true);
@@ -480,10 +489,17 @@ void updatePins(const bool force) {
   }
 }
 
+void handleTestMode() {
+	analogOutPins[0].updateState(analogInPins[0].getAValue());
+	analogOutPins[1].updateState(analogInPins[1].getAValue());
+}
+
 void loop() {
   checkSerialInputUSBtoUART();
   checkSerialInputUARTtoUSB();
   updatePins(false);
   updateAnalogs(false);
+  if (testMode) {
+	  handleTestMode();
+  }
 }
-

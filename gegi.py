@@ -37,43 +37,46 @@ class StatusDisplays(threading.Thread):
 		self.flight = flight
 		self.flightstream = flightstream
 	def run(self):
-		# g-force changed enough?
-		newgforce = self.flight().g_force
-		if (abs(newgforce-self.lastgforce)>0.01):
-			self.lastgforce = newgforce
-			newgforce = min(abs(newgforce),5)
-			newgforce = int(newgforce*255/5)
-			gforcecommand = "A0="+str(newgforce)+"\n"
-#			print(gforcecommand)
-			myserwrite(gforcecommand.encode())
-		# LCD
-		if self.lcdmode==0: # switch on middle = Orbit
-			val = self.orbit.apoapsis_altitude
-			if val>=0:
-				fval = si_format(val, precision=2).rjust(7)[:7]+" "
-			else:
-				fval = si_format(val, precision=2).rjust(8)[:8]
-			line = "P0=A:"+fval+time_format(self.orbit.time_to_apoapsis)+"\n"
-			val = self.orbit.periapsis_altitude
-			if val>=0:
-				fval = si_format(val, precision=2).rjust(7)[:7]+" "
-			else:
-				fval = si_format(val, precision=2).rjust(8)[:8]
-			line = line+"P1=P:"+fval+time_format(self.orbit.time_to_periapsis)+"\n"
-		elif self.lcdmode==1: # switch on right = Landing Altitude+Speed
-			fval = si_format(self.flight().surface_altitude, precision=3).rjust(8)[:8]
-			line = "P0=ALT:"+fval+"m\nP1=V"+chr(126)
-			ss = self.flightstream().speed
-			vs = self.flightstream().vertical_speed
-#			print(str(ss)+"\t"+str(vs)+"\t"+str(self.flightstream().g_force)+"\t"+str(self.flight().g_force))
-			fval = si_format(abs((ss*ss-vs*vs)**(1/2)), precision=0).rjust(4)[:4]
-			line = line+fval+" v"
-			fval = si_format(abs(vs), precision=0).rjust(5)[:5]
-			line = line+fval+"m/s\n"
-		elif self.lcdmode==2: # switch on left = Target(?)
-			line="P0=Mode 1 Left\nP1=Target mode\n"
-		#print("mode"+str(lcdmode)+" "+line)
-		myserwrite(line.encode())
+		try:
+			# g-force changed enough?
+			newgforce = self.flight().g_force
+			if (abs(newgforce-self.lastgforce)>0.01):
+				self.lastgforce = newgforce
+				newgforce = min(abs(newgforce),5)
+				newgforce = int(newgforce*255/5)
+				gforcecommand = "A0="+str(newgforce)+"\n"
+	#			print(gforcecommand)
+				myserwrite(gforcecommand.encode())
+			# LCD
+			if self.lcdmode==0: # switch on middle = Orbit
+				val = self.orbit.apoapsis_altitude
+				if val>=0:
+					fval = si_format(val, precision=2).rjust(7)[:7]+" "
+				else:
+					fval = si_format(val, precision=2).rjust(8)[:8]
+				line = "P0=A:"+fval+time_format(self.orbit.time_to_apoapsis)+"\n"
+				val = self.orbit.periapsis_altitude
+				if val>=0:
+					fval = si_format(val, precision=2).rjust(7)[:7]+" "
+				else:
+					fval = si_format(val, precision=2).rjust(8)[:8]
+				line = line+"P1=P:"+fval+time_format(self.orbit.time_to_periapsis)+"\n"
+			elif self.lcdmode==1: # switch on right = Landing Altitude+Speed
+				fval = si_format(self.flight().surface_altitude, precision=3).rjust(8)[:8]
+				line = "P0=ALT:"+fval+"m\nP1=V"+chr(126)
+				ss = self.flightstream().speed
+				vs = self.flightstream().vertical_speed
+	#			print(str(ss)+"\t"+str(vs)+"\t"+str(self.flightstream().g_force)+"\t"+str(self.flight().g_force))
+				fval = si_format(abs((ss*ss-vs*vs)**(1/2)), precision=0).rjust(4)[:4]
+				line = line+fval+" v"
+				fval = si_format(abs(vs), precision=0).rjust(5)[:5]
+				line = line+fval+"m/s\n"
+			elif self.lcdmode==2: # switch on left = Target(?)
+				line="P0=Mode 1 Left\nP1=Target mode\n"
+			#print("mode"+str(lcdmode)+" "+line)
+			myserwrite(line.encode())
+		except krpc.error.RPCError:
+			pass
 
 # thread to calculate overheat [max(% temp/maxtemp) for each part]
 class TempMax(threading.Thread):
@@ -87,6 +90,8 @@ class TempMax(threading.Thread):
 			self.temp_pct=max([max(part.temperature/part.max_temperature,part.skin_temperature/part.max_skin_temperature) for part in self.parts])
 		except ValueError:
 			self.temp_pct = 0
+		except krpc.error.RPCError:
+			pass
 		if ((self.temp_pct<0.6) and (overheat!=0)):
 			self.overheat = 0
 			myserwrite(b"LG12=1\nLR12=0\n")
@@ -110,35 +115,38 @@ class LowResources(threading.Thread):
 		self.fuel_pct = 0
 	def run(self):
 		# power
-		rmax = self.resources.max('ElectricCharge')
-		if rmax>0:
-			self.power_pct = self.resources.amount('ElectricCharge')/rmax
-		if (abs(self.power_pct-self.lastpowerpct)>0.01):
-			self.lastpowerpct = self.power_pct
-			powercommand = "A1="+str(int(self.power_pct*255))+"\n"
-			myserwrite(powercommand.encode())
-		if ((self.power_pct>=.2) and (self.lowpower!=0)):
-			self.lowpower = 0
-			myserwrite(b"LG11=1\nLR11=0\n")
-		if ((self.power_pct<.2) and (self.power_pct>.1) and (self.lowpower!=1)):
-			self.lowpower = 1
-			myserwrite(b"LG11=0\nLR11=1\n")
-		if ((self.power_pct<=.1) and (self.lowpower!=2)):
-			self.lowpower = 2
-			myserwrite(b"LG11=0\nLR11=3\n")
-		rmax = self.resources.max('LiquidFuel')
-		if rmax>0:
-			self.fuel_pct = self.resources.amount('LiquidFuel')/rmax
-		# fuel
-		if (((self.fuel_pct>=.2) or (self.fuel_pct==0)) and (self.lowfuel!=0)):
-			self.lowfuel = 0
-			myserwrite(b"LG10=1\nLR10=0\n")
-		if ((self.fuel_pct<.2) and (self.fuel_pct>.1) and (self.lowfuel!=1)):
-			self.lowfuel = 1
-			myserwrite(b"LG10=0\nLR10=1\n")
-		if ((self.fuel_pct<=.1) and (self.fuel_pct>0) and (self.lowfuel!=2)):
-			lowpower = 2
-			myserwrite(b"LG10=0\nLR10=3\n")
+		try:
+			rmax = self.resources.max('ElectricCharge')
+			if rmax>0:
+				self.power_pct = self.resources.amount('ElectricCharge')/rmax
+			if (abs(self.power_pct-self.lastpowerpct)>0.01):
+				self.lastpowerpct = self.power_pct
+				powercommand = "A1="+str(int(self.power_pct*255))+"\n"
+				myserwrite(powercommand.encode())
+			if ((self.power_pct>=.2) and (self.lowpower!=0)):
+				self.lowpower = 0
+				myserwrite(b"LG11=1\nLR11=0\n")
+			if ((self.power_pct<.2) and (self.power_pct>.1) and (self.lowpower!=1)):
+				self.lowpower = 1
+				myserwrite(b"LG11=0\nLR11=1\n")
+			if ((self.power_pct<=.1) and (self.lowpower!=2)):
+				self.lowpower = 2
+				myserwrite(b"LG11=0\nLR11=3\n")
+			rmax = self.resources.max('LiquidFuel')
+			if rmax>0:
+				self.fuel_pct = self.resources.amount('LiquidFuel')/rmax
+			# fuel
+			if (((self.fuel_pct>=.2) or (self.fuel_pct==0)) and (self.lowfuel!=0)):
+				self.lowfuel = 0
+				myserwrite(b"LG10=1\nLR10=0\n")
+			if ((self.fuel_pct<.2) and (self.fuel_pct>.1) and (self.lowfuel!=1)):
+				self.lowfuel = 1
+				myserwrite(b"LG10=0\nLR10=1\n")
+			if ((self.fuel_pct<=.1) and (self.fuel_pct>0) and (self.lowfuel!=2)):
+				lowpower = 2
+				myserwrite(b"LG10=0\nLR10=3\n")
+		except krpc.error.RPCError:
+			pass
 
 conn = None
 print("Connecting to Kerbal Space Program kRPC\n")

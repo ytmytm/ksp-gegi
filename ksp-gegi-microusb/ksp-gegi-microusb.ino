@@ -498,4 +498,6 @@ void loop() {
   if (testMode) {
 	  handleTestMode();
   }
+  delay(20);
 }
+

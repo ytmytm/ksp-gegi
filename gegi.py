@@ -200,7 +200,7 @@ lastgforce = -100
 lcdmode = 0
 oledmode = 0
 
-while True:
+while vessel == conn.space_center.active_vessel:
 	#print("---------CONTROL")
 	#print("SAS:"+str(control.sas)+"\tRCS:"+str(control.rcs))
 	#print("Gear:"+str(control.gear)+"\tLights:"+str(control.lights))
@@ -330,3 +330,5 @@ while True:
 				myserwrite(b"LG4=0\nLR4=1\n")
 	myserflush()
 #	time.sleep(.1)
+
+# we will exit this while loop cleanly if vessel is switched

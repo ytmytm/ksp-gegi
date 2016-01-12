@@ -4,29 +4,29 @@ import serial
 import threading
 from si_prefix import si_format
 from time_format import time_format
+from ask_for_port import ask_for_port
 
-ser=serial.Serial(port="COM21",baudrate=115200,timeout=0,write_timeout=0)
+serialLock = threading.Lock()
+lastflush = time.time()
+
+ser = serial.Serial(port=ask_for_port(),baudrate=115200,timeout=0,write_timeout=0)
 
 if not ser.isOpen():
 	print("Can't open serial port!")
 
-lastflush = time.time()
-serbuffer = b"\n"
-
+# atomic serial write called from main loop and from threads
 def myserwrite(line):
-	global serbuffer
-	serbuffer = serbuffer+line
+	with serialLock:
+		ser.write(line)
 
+# flush is called at the end of the loop, not from threads
 def myserflush():
 	global lastflush
-	global serbuffer
 	print("Flush!"+str(round((time.time()-lastflush)*1000))+"\t")
 	lastflush = time.time()
-	ser.write(serbuffer)
-#	print(str(serbuffer))
-	serbuffer = b"\n"
 	ser.flush()
 
+# thread to calculate overheat [max(% temp/maxtemp) for each part]
 class TempMax(threading.Thread):
 	def __init__(self,parts):
 		super(TempMax, self).__init__()
@@ -37,7 +37,7 @@ class TempMax(threading.Thread):
 			self.temp_pct=max([max(part.temperature/part.max_temperature,part.skin_temperature/part.max_skin_temperature) for part in self.parts])
 		except ValueError:
 			self.temp_pct = 0
-#		threading.Thread.__init__(self) # this allows to call start() again on this thread
+#		threading.Thread.__init__(self) # this allows to call start() again on this thread, but the vessel may have lost parts in the meantime
 
 conn = None
 while conn==None:
@@ -57,20 +57,18 @@ while vessel==None:
 	except krpc.error.RPCError:
 		print("Not in proper game scene")
 		myserwrite("P0=Waiting for\nP1=game scene\n".encode)
-		time.sleep(1)
+		time.sleep(.5)
 
 print("Active vessel:"+vessel.name)
 line = "P0="+conn.krpc.get_status().version+"\n"
 line = line+"P1="+vessel.name+"\n"
 myserwrite(line.encode())
-time.sleep(1)
+time.sleep(.5)
 
 # ask for status
 myserwrite(b"R\n")
 
-control = vessel.control
-#refframe = vessel.orbit.body.reference_frame
-#refframe = vessel.orbit.body.non_rotating_reference_frame
+control  = vessel.control
 flight   = conn.add_stream(vessel.flight,vessel.orbit.body.reference_frame)
 speed	 = conn.add_stream(vessel.flight,vessel.orbit.body.non_rotating_reference_frame)
 orbit	 = vessel.orbit
@@ -228,16 +226,13 @@ while True:
 			print("Max heat: "+str(round(temp_pct*100,0))+"\tPower: "+str(round(power_pct*100,0))+"\tL.fuel: "+str(round(fuel_pct*100,0)))
 			if ((temp_pct<0.6) and (overheat!=0)):
 				overheat = 0
-				myserwrite(b"LG12=1\n")
-				myserwrite(b"LR12=0\n")
+				myserwrite(b"LG12=1\nLR12=0\n")
 			if ((temp_pct>=0.6) and (temp_pct<0.8) and (overheat!=1)):
 				overheat = 1
-				myserwrite(b"LG12=0\n")
-				myserwrite(b"LR12=1\n")
+				myserwrite(b"LG12=0\nLR12=1\n")
 			if ((temp_pct>=0.8) and (overheat!=2)):
 				overheat = 2
-				myserwrite(b"LG12=0\n")
-				myserwrite(b"LR12=3\n")
+				myserwrite(b"LG12=0\nLR12=3\n")
 		# power
 		if (abs(power_pct-lastpowerpct)>0.01):
 			lastpowerpct=power_pct
@@ -246,62 +241,48 @@ while True:
 			myserwrite(powercommand.encode())
 		if ((power_pct>=.2) and (lowpower!=0)):
 			lowpower = 0
-			myserwrite(b"LG11=1\n")
-			myserwrite(b"LR11=0\n")
+			myserwrite(b"LG11=1\nLR11=0\n")
 		if ((power_pct<.2) and (power_pct>.1) and (lowpower!=1)):
 			lowpower = 1
-			myserwrite(b"LG11=0\n")
-			myserwrite(b"LR11=1\n")
+			myserwrite(b"LG11=0\nLR11=1\n")
 		if ((power_pct<=.1) and (lowpower!=2)):
 			lowpower = 2
-			myserwrite(b"LG11=0\n")
-			myserwrite(b"LR11=3\n")
+			myserwrite(b"LG11=0\nLR11=3\n")
 		# fuel
 		if (((fuel_pct>=.2) or (fuel_pct==0)) and (lowfuel!=0)):
 			lowfuel = 0
-			myserwrite(b"LG10=1\n")
-			myserwrite(b"LR10=0\n")
+			myserwrite(b"LG10=1\nLR10=0\n")
 		if ((fuel_pct<.2) and (fuel_pct>.1) and (lowfuel!=1)):
 			lowfuel = 1
-			myserwrite(b"LG10=0\n")
-			myserwrite(b"LR10=1\n")
+			myserwrite(b"LG10=0\nLR10=1\n")
 		if ((fuel_pct<=.1) and (fuel_pct>0) and (lowfuel!=2)):
 			lowpower = 2
-			myserwrite(b"LG10=0\n")
-			myserwrite(b"LR10=3\n")
+			myserwrite(b"LG10=0\nLR10=3\n")
 
 		# serial state change
 		if control.rcs!=lastrcs:
 			lastrcs = control.rcs
 			if lastrcs:
-				myserwrite(b"LG6=1\n")
-				myserwrite(b"LR6=0\n")
+				myserwrite(b"LG6=1\nLR6=0\n")
 			else:
-				myserwrite(b"LG6=0\n")
-				myserwrite(b"LR6=1\n")
+				myserwrite(b"LG6=0\nLR6=1\n")
 		if control.sas!=lastsas:
 			lastsas = control.sas
 			if lastsas:
-				myserwrite(b"LG7=1\n")
-				myserwrite(b"LR7=0\n")
+				myserwrite(b"LG7=1\nLR7=0\n")
 			else:
-				myserwrite(b"LG7=0\n")
-				myserwrite(b"LR7=1\n")
+				myserwrite(b"LG7=0\nLR7=1\n")
 		if control.gear!=lastgear:
 			lastgear = control.gear
 			if lastgear:
-				myserwrite(b"LG5=1\n")
-				myserwrite(b"LR5=0\n")
+				myserwrite(b"LG5=1\nLR5=0\n")
 			else:
-				myserwrite(b"LG5=0\n")
-				myserwrite(b"LR5=1\n")
+				myserwrite(b"LG5=0\nLR5=1\n")
 		if control.lights!=lastlights:
 			lastlights = control.lights
 			if lastlights:
-				myserwrite(b"LG4=1\n")
-				myserwrite(b"LR4=0\n")
+				myserwrite(b"LG4=1\nLR4=0\n")
 			else:
-				myserwrite(b"LG4=0\n")
-				myserwrite(b"LR4=1\n")
+				myserwrite(b"LG4=0\nLR4=1\n")
 	myserflush()
 #	time.sleep(.1)

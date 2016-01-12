@@ -1,6 +1,7 @@
 import krpc
 import time
 import serial
+import threading
 from si_prefix import si_format
 from time_format import time_format
 
@@ -25,6 +26,18 @@ def myserflush():
 #	print(str(serbuffer))
 	serbuffer = b"\n"
 	ser.flush()
+
+class TempMax(threading.Thread):
+	def __init__(self,parts):
+		super(TempMax, self).__init__()
+		self.parts = parts
+		self.temp_pct = 0
+	def run(self):
+		try:
+			self.temp_pct=max([max(part.temperature/part.max_temperature,part.skin_temperature/part.max_skin_temperature) for part in self.parts])
+		except ValueError:
+			self.temp_pct = 0
+#		threading.Thread.__init__(self) # this allows to call start() again on this thread
 
 conn = None
 while conn==None:
@@ -76,6 +89,11 @@ lcdmode = 0
 
 # may throw krpc.error.RPCError if vessel no longer active/exists,
 # should roll back to vessel = conn.space_center.active_vessel above loop
+
+# do temperature/overheat estimation in separate thread so command & control is not blocked by this
+temperature = None
+temp_pct = 0
+
 while True:
 	#print("---------CONTROL")
 	#print("SAS:"+str(control.sas)+"\tRCS:"+str(control.rcs))
@@ -89,10 +107,6 @@ while True:
 	#print("Altitude: "+str(round(flight().mean_altitude,0))+"\tSpeed: "+str(round(speed().speed,2)))
 	#print("Pitch :"+str(round(flight().pitch,1))+"\tRoll :"+str(round(flight().roll,1))+"\t Head :"+str(round(flight().heading,1)))
 
-	try:
-		temp_pct=max([max(part.temperature/part.max_temperature,part.skin_temperature/part.max_skin_temperature) for part in vessel.parts.all])
-	except ValueError:
-		temp_pct = 0
 	res = vessel.resources
 	rmax = res.max('ElectricCharge')
 	if rmax>0:
@@ -104,7 +118,6 @@ while True:
 		fuel_pct = res.amount('LiquidFuel')/rmax
 	else:
 		fuel_pct = 0
-#	print("Max heat: "+str(round(temp_pct*100,0))+"\tPower: "+str(round(power_pct*100,0))+"\tL.fuel: "+str(round(fuel_pct*100,0)))
 
 	# serial link
 	if ser.isOpen():
@@ -206,18 +219,25 @@ while True:
 		myserwrite(line.encode())
 		# Warnings
 		# overheat <0.6, .8-.9, >.9
-		if ((temp_pct<0.6) and (overheat!=0)):
-			overheat = 0
-			myserwrite(b"LG12=1\n")
-			myserwrite(b"LR12=0\n")
-		if ((temp_pct>=0.6) and (temp_pct<0.8) and (overheat!=1)):
-			overheat = 1
-			myserwrite(b"LG12=0\n")
-			myserwrite(b"LR12=1\n")
-		if ((temp_pct>=0.8) and (overheat!=2)):
-			overheat = 2
-			myserwrite(b"LG12=0\n")
-			myserwrite(b"LR12=3\n")
+		if temperature == None:
+			temperature = TempMax(vessel.parts.all)
+			temperature.start()
+		elif not temperature.is_alive():
+			temp_pct = temperature.temp_pct
+			temperature = None
+			print("Max heat: "+str(round(temp_pct*100,0))+"\tPower: "+str(round(power_pct*100,0))+"\tL.fuel: "+str(round(fuel_pct*100,0)))
+			if ((temp_pct<0.6) and (overheat!=0)):
+				overheat = 0
+				myserwrite(b"LG12=1\n")
+				myserwrite(b"LR12=0\n")
+			if ((temp_pct>=0.6) and (temp_pct<0.8) and (overheat!=1)):
+				overheat = 1
+				myserwrite(b"LG12=0\n")
+				myserwrite(b"LR12=1\n")
+			if ((temp_pct>=0.8) and (overheat!=2)):
+				overheat = 2
+				myserwrite(b"LG12=0\n")
+				myserwrite(b"LR12=3\n")
 		# power
 		if (abs(power_pct-lastpowerpct)>0.01):
 			lastpowerpct=power_pct

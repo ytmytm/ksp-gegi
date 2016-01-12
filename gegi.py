@@ -26,6 +26,55 @@ def myserflush():
 	lastflush = time.time()
 	ser.flush()
 
+# thread to display status (G-force, LCD, OLED)
+class StatusDisplays(threading.Thread):
+	def __init__(self,orbit,flight,flightstream,lcdmode,oledmode,lastgforce):
+		super(StatusDisplays, self).__init__()
+		self.lcdmode = lcdmode
+		self.oledmode = oledmode
+		self.lastgforce = lastgforce
+		self.orbit = orbit
+		self.flight = flight
+		self.flightstream = flightstream
+	def run(self):
+		# g-force changed enough?
+		newgforce = self.flight().g_force
+		if (abs(newgforce-self.lastgforce)>0.01):
+			self.lastgforce = newgforce
+			newgforce = min(abs(newgforce),5)
+			newgforce = int(newgforce*255/5)
+			gforcecommand = "A0="+str(newgforce)+"\n"
+#			print(gforcecommand)
+			myserwrite(gforcecommand.encode())
+		# LCD
+		if self.lcdmode==0: # switch on middle = Orbit
+			val = self.orbit.apoapsis_altitude
+			if val>=0:
+				fval = si_format(val, precision=2).rjust(7)[:7]+" "
+			else:
+				fval = si_format(val, precision=2).rjust(8)[:8]
+			line = "P0=A:"+fval+time_format(self.orbit.time_to_apoapsis)+"\n"
+			val = self.orbit.periapsis_altitude
+			if val>=0:
+				fval = si_format(val, precision=2).rjust(7)[:7]+" "
+			else:
+				fval = si_format(val, precision=2).rjust(8)[:8]
+			line = line+"P1=P:"+fval+time_format(self.orbit.time_to_periapsis)+"\n"
+		elif self.lcdmode==1: # switch on right = Landing Altitude+Speed
+			fval = si_format(self.flight().surface_altitude, precision=3).rjust(8)[:8]
+			line = "P0=ALT:"+fval+"m\nP1=V"+chr(126)
+			ss = self.flightstream().speed
+			vs = self.flightstream().vertical_speed
+#			print(str(ss)+"\t"+str(vs)+"\t"+str(self.flightstream().g_force)+"\t"+str(self.flight().g_force))
+			fval = si_format(abs((ss*ss-vs*vs)**(1/2)), precision=0).rjust(4)[:4]
+			line = line+fval+" v"
+			fval = si_format(abs(vs), precision=0).rjust(5)[:5]
+			line = line+fval+"m/s\n"
+		elif self.lcdmode==2: # switch on left = Target(?)
+			line="P0=Mode 1 Left\nP1=Target mode\n"
+		#print("mode"+str(lcdmode)+" "+line)
+		myserwrite(line.encode())
+
 # thread to calculate overheat [max(% temp/maxtemp) for each part]
 class TempMax(threading.Thread):
 	def __init__(self,parts,overheat):
@@ -123,17 +172,14 @@ time.sleep(.5)
 myserwrite(b"R\n")
 
 control  = vessel.control
-flight   = conn.add_stream(vessel.flight,vessel.orbit.body.reference_frame)
-speed	 = conn.add_stream(vessel.flight,vessel.orbit.body.non_rotating_reference_frame)
+flightstream = conn.add_stream(vessel.flight,vessel.orbit.body.reference_frame)
 orbit	 = vessel.orbit
 
 lastrcs = control.rcs
 lastsas = control.sas
 lastgear = control.gear
 lastlights = control.lights
-lastgforce = -100
 stageabort = False
-lcdmode = 0
 
 # may throw krpc.error.RPCError if vessel no longer active/exists,
 # should roll back to vessel = conn.space_center.active_vessel above loop
@@ -148,6 +194,11 @@ power_pct = -1
 lowpower = -1
 fuel_pct = -1
 lowfuel  = -1
+# do status display (G-force, LCD, OLED) in separate thread so command & control is not blocked by this
+statusthread = None
+lastgforce = -100
+lcdmode = 0
+oledmode = 0
 
 while True:
 	#print("---------CONTROL")
@@ -224,41 +275,12 @@ while True:
 				lcdmode = 1 # right=surface
 
 		# Status
-		# g-force changed enough?
-		newgforce = vessel.flight().g_force
-		if (abs(newgforce-lastgforce)>0.01):
-			lastgforce = newgforce
-			newgforce = min(abs(newgforce),5)
-			newgforce = int(newgforce*255/5)
-			gforcecommand = "A0="+str(newgforce)+"\n"
-			myserwrite(gforcecommand.encode())
-		# LCD
-		if lcdmode==0: # switch on middle = Orbit
-			val = orbit.apoapsis_altitude
-			if val>=0:
-				fval = si_format(val, precision=2).rjust(7)[:7]+" "
-			else:
-				fval = si_format(val, precision=2).rjust(8)[:8]
-			line = "P0=A:"+fval+time_format(orbit.time_to_apoapsis)+"\n"
-			val = orbit.periapsis_altitude
-			if val>=0:
-				fval = si_format(val, precision=2).rjust(7)[:7]+" "
-			else:
-				fval = si_format(val, precision=2).rjust(8)[:8]
-			line = line+"P1=P:"+fval+time_format(orbit.time_to_periapsis)+"\n"
-		elif lcdmode==1: # switch on right = Landing Altitude+Speed
-			fval = si_format(flight().surface_altitude, precision=3).rjust(8)[:8]
-			line = "P0=ALT:"+fval+"m\nP1=V"+chr(126)
-			ss = flight().speed
-			vs = flight().vertical_speed
-			fval = si_format(abs((ss*ss-vs*vs)**(1/2)), precision=0).rjust(4)[:4]
-			line = line+fval+" v"
-			fval = si_format(abs(vs), precision=0).rjust(5)[:5]
-			line = line+fval+"m/s\n"
-		elif lcdmode==2: # switch on left = Target(?)
-			line="P0=Mode 1 Left\nP1=Target mode\n"
-		#print("mode"+str(lcdmode)+" "+line)
-		myserwrite(line.encode())
+		if statusthread == None:
+			statusthread = StatusDisplays(orbit,vessel.flight,flightstream,lcdmode,oledmode,lastgforce)
+			statusthread.start()
+		elif not statusthread.is_alive():
+			lastgforce = statusthread.lastgforce
+			statusthread = None
 		# Warnings
 		# overheat <0.6, .8-.9, >.9
 		if temperature == None:

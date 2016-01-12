@@ -28,8 +28,9 @@ def myserflush():
 
 # thread to calculate overheat [max(% temp/maxtemp) for each part]
 class TempMax(threading.Thread):
-	def __init__(self,parts):
+	def __init__(self,parts,overheat):
 		super(TempMax, self).__init__()
+		self.overheat = overheat
 		self.parts = parts
 		self.temp_pct = 0
 	def run(self):
@@ -37,15 +38,68 @@ class TempMax(threading.Thread):
 			self.temp_pct=max([max(part.temperature/part.max_temperature,part.skin_temperature/part.max_skin_temperature) for part in self.parts])
 		except ValueError:
 			self.temp_pct = 0
+		if ((self.temp_pct<0.6) and (overheat!=0)):
+			self.overheat = 0
+			myserwrite(b"LG12=1\nLR12=0\n")
+		if ((self.temp_pct>=0.6) and (self.temp_pct<0.8) and (self.overheat!=1)):
+			self.overheat = 1
+			myserwrite(b"LG12=0\nLR12=1\n")
+		if ((self.temp_pct>=0.8) and (self.overheat!=2)):
+			self.overheat = 2
+			myserwrite(b"LG12=0\nLR12=3\n")
 #		threading.Thread.__init__(self) # this allows to call start() again on this thread, but the vessel may have lost parts in the meantime
 
+# thread to calculate low power/low fuel
+class LowResources(threading.Thread):
+	def __init__(self,resources,lowpower,lastpowerpct,lowfuel):
+		super(LowResources, self).__init__()
+		self.resources = resources
+		self.lowpower = lowpower
+		self.power_pct = 0
+		self.lastpowerpct = lastpowerpct
+		self.lowfuel = lowfuel
+		self.fuel_pct = 0
+	def run(self):
+		# power
+		rmax = self.resources.max('ElectricCharge')
+		if rmax>0:
+			self.power_pct = self.resources.amount('ElectricCharge')/rmax
+		if (abs(self.power_pct-self.lastpowerpct)>0.01):
+			self.lastpowerpct = self.power_pct
+			powercommand = "A1="+str(int(self.power_pct*255))+"\n"
+			myserwrite(powercommand.encode())
+		if ((self.power_pct>=.2) and (self.lowpower!=0)):
+			self.lowpower = 0
+			myserwrite(b"LG11=1\nLR11=0\n")
+		if ((self.power_pct<.2) and (self.power_pct>.1) and (self.lowpower!=1)):
+			self.lowpower = 1
+			myserwrite(b"LG11=0\nLR11=1\n")
+		if ((self.power_pct<=.1) and (self.lowpower!=2)):
+			self.lowpower = 2
+			myserwrite(b"LG11=0\nLR11=3\n")
+		rmax = self.resources.max('LiquidFuel')
+		if rmax>0:
+			self.fuel_pct = self.resources.amount('LiquidFuel')/rmax
+		# fuel
+		if (((self.fuel_pct>=.2) or (self.fuel_pct==0)) and (self.lowfuel!=0)):
+			self.lowfuel = 0
+			myserwrite(b"LG10=1\nLR10=0\n")
+		if ((self.fuel_pct<.2) and (self.fuel_pct>.1) and (self.lowfuel!=1)):
+			self.lowfuel = 1
+			myserwrite(b"LG10=0\nLR10=1\n")
+		if ((self.fuel_pct<=.1) and (self.fuel_pct>0) and (self.lowfuel!=2)):
+			lowpower = 2
+			myserwrite(b"LG10=0\nLR10=3\n")
+
 conn = None
+print("Connecting to Kerbal Space Program kRPC\n")
+myserwrite("P0=Connecting to\nP1=Kerbal Space Prg\n".encode())
 while conn==None:
 	try:
 		conn = krpc.connect(name='Arduino')
 	except (krpc.error.NetworkError,ConnectionRefusedError):
 		print("Connection refused, waiting 5s")
-		myserwrite("P1=Connecting...\n".encode)
+		myserwrite("P1=Connecting...\n".encode())
 		time.sleep(5)
 
 print("Connection successful "+conn.krpc.get_status().version)
@@ -56,7 +110,7 @@ while vessel==None:
 		vessel = conn.space_center.active_vessel
 	except krpc.error.RPCError:
 		print("Not in proper game scene")
-		myserwrite("P0=Waiting for\nP1=game scene\n".encode)
+		myserwrite("P0=Waiting for\nP1=game scene\n".encode())
 		time.sleep(.5)
 
 print("Active vessel:"+vessel.name)
@@ -78,11 +132,7 @@ lastsas = control.sas
 lastgear = control.gear
 lastlights = control.lights
 lastgforce = -100
-lastpowerpct = -100
 stageabort = False
-overheat = 3
-lowpower = 3
-lowfuel = 3
 lcdmode = 0
 
 # may throw krpc.error.RPCError if vessel no longer active/exists,
@@ -90,7 +140,14 @@ lcdmode = 0
 
 # do temperature/overheat estimation in separate thread so command & control is not blocked by this
 temperature = None
-temp_pct = 0
+temp_pct = -1
+overheat = -1
+# do electric power estimation and low fuel in separate thread so command & control is not blocked by this
+resourcethread = None
+power_pct = -1
+lowpower = -1
+fuel_pct = -1
+lowfuel  = -1
 
 while True:
 	#print("---------CONTROL")
@@ -105,18 +162,6 @@ while True:
 	#print("Altitude: "+str(round(flight().mean_altitude,0))+"\tSpeed: "+str(round(speed().speed,2)))
 	#print("Pitch :"+str(round(flight().pitch,1))+"\tRoll :"+str(round(flight().roll,1))+"\t Head :"+str(round(flight().heading,1)))
 
-	res = vessel.resources
-	rmax = res.max('ElectricCharge')
-	if rmax>0:
-		power_pct = res.amount('ElectricCharge')/rmax
-	else:
-		power_pct = 0
-	rmax = res.max('LiquidFuel')
-	if rmax>0:
-		fuel_pct = res.amount('LiquidFuel')/rmax
-	else:
-		fuel_pct = 0
-
 	# serial link
 	if ser.isOpen():
 		while ser.inWaiting()>0:
@@ -128,7 +173,6 @@ while True:
 				lastgear=None
 				lastlights=None
 				lastgforce=-100
-				lastpowerpct=-100
 			if line[:3]=="P0=":
 				control.throttle = int(line[3:],16)/255
 			if line[:3]=="P1=":
@@ -218,46 +262,24 @@ while True:
 		# Warnings
 		# overheat <0.6, .8-.9, >.9
 		if temperature == None:
-			temperature = TempMax(vessel.parts.all)
+			temperature = TempMax(vessel.parts.all,overheat)
 			temperature.start()
 		elif not temperature.is_alive():
 			temp_pct = temperature.temp_pct
+			overheat = temperature.overheat
 			temperature = None
-			print("Max heat: "+str(round(temp_pct*100,0))+"\tPower: "+str(round(power_pct*100,0))+"\tL.fuel: "+str(round(fuel_pct*100,0)))
-			if ((temp_pct<0.6) and (overheat!=0)):
-				overheat = 0
-				myserwrite(b"LG12=1\nLR12=0\n")
-			if ((temp_pct>=0.6) and (temp_pct<0.8) and (overheat!=1)):
-				overheat = 1
-				myserwrite(b"LG12=0\nLR12=1\n")
-			if ((temp_pct>=0.8) and (overheat!=2)):
-				overheat = 2
-				myserwrite(b"LG12=0\nLR12=3\n")
+#			print("Max heat: "+str(round(temp_pct*100,0)))
 		# power
-		if (abs(power_pct-lastpowerpct)>0.01):
-			lastpowerpct=power_pct
-			newpower=int(power_pct*255)
-			powercommand = "A1="+str(newpower)+"\n"
-			myserwrite(powercommand.encode())
-		if ((power_pct>=.2) and (lowpower!=0)):
-			lowpower = 0
-			myserwrite(b"LG11=1\nLR11=0\n")
-		if ((power_pct<.2) and (power_pct>.1) and (lowpower!=1)):
-			lowpower = 1
-			myserwrite(b"LG11=0\nLR11=1\n")
-		if ((power_pct<=.1) and (lowpower!=2)):
-			lowpower = 2
-			myserwrite(b"LG11=0\nLR11=3\n")
-		# fuel
-		if (((fuel_pct>=.2) or (fuel_pct==0)) and (lowfuel!=0)):
-			lowfuel = 0
-			myserwrite(b"LG10=1\nLR10=0\n")
-		if ((fuel_pct<.2) and (fuel_pct>.1) and (lowfuel!=1)):
-			lowfuel = 1
-			myserwrite(b"LG10=0\nLR10=1\n")
-		if ((fuel_pct<=.1) and (fuel_pct>0) and (lowfuel!=2)):
-			lowpower = 2
-			myserwrite(b"LG10=0\nLR10=3\n")
+		if resourcethread == None:
+			resourcethread = LowResources(vessel.resources,lowpower,power_pct,lowfuel)
+			resourcethread.start()
+		elif not resourcethread.is_alive():
+			power_pct = resourcethread.power_pct
+			lowpower = resourcethread.lowpower
+			fuel_pct = resourcethread.fuel_pct
+			lowfuel = resourcethread.lowfuel
+			resourcethread = None
+#			print("Power: "+str(round(power_pct*100,0))+" ("+str(lowpower)+")\tL.fuel: "+str(round(fuel_pct*100,0))+" ("+str(lowpower)+")")
 
 		# serial state change
 		if control.rcs!=lastrcs:

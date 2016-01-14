@@ -6,21 +6,16 @@ from si_prefix import si_format
 from time_format import time_format
 from ask_for_port import ask_for_port
 
-serialLock = threading.Lock()
-lastflush = time.time()
-
-ser = serial.Serial(port=ask_for_port(),baudrate=115200,timeout=0,write_timeout=0)
-
-if not ser.isOpen():
-	print("Can't open serial port!")
-
 # atomic serial write called from main loop and from threads
 def myserwrite(line):
+	global serialLock
+	global ser
 	with serialLock:
 		ser.write(line)
 
 # flush is called at the end of the loop, not from threads
 def myserflush():
+	global ser
 	global lastflush
 	print("Flush!"+str(round((time.time()-lastflush)*1000))+"\t")
 	lastflush = time.time()
@@ -92,7 +87,7 @@ class TempMax(threading.Thread):
 			self.temp_pct = 0
 		except krpc.error.RPCError:
 			pass
-		if ((self.temp_pct<0.6) and (overheat!=0)):
+		if ((self.temp_pct<0.6) and (self.overheat!=0)):
 			self.overheat = 0
 			myserwrite(b"LG12=1\nLR12=0\n")
 		if ((self.temp_pct>=0.6) and (self.temp_pct<0.8) and (self.overheat!=1)):
@@ -143,200 +138,266 @@ class LowResources(threading.Thread):
 				self.lowfuel = 1
 				myserwrite(b"LG10=0\nLR10=1\n")
 			if ((self.fuel_pct<=.1) and (self.fuel_pct>0) and (self.lowfuel!=2)):
-				lowpower = 2
+				self.lowfuel = 2
 				myserwrite(b"LG10=0\nLR10=3\n")
 		except krpc.error.RPCError:
 			pass
 
-conn = None
-print("Connecting to Kerbal Space Program kRPC\n")
-myserwrite("P0=Connecting to\nP1=Kerbal Space Prg\n".encode())
-while conn==None:
-	try:
-		conn = krpc.connect(name='Arduino')
-	except (krpc.error.NetworkError,ConnectionRefusedError):
-		print("Connection refused, waiting 5s")
-		myserwrite("P1=Connecting...\n".encode())
-		time.sleep(5)
-
-print("Connection successful "+conn.krpc.get_status().version)
-
-vessel = None
-while vessel==None:
-	try:
-		vessel = conn.space_center.active_vessel
-	except krpc.error.RPCError:
-		print("Not in proper game scene")
-		myserwrite("P0=Waiting for\nP1=game scene\n".encode())
-		time.sleep(.5)
-
-print("Active vessel:"+vessel.name)
-line = "P0="+conn.krpc.get_status().version+"\n"
-line = line+"P1="+vessel.name+"\n"
-myserwrite(line.encode())
-time.sleep(.5)
-
-# ask for status
-myserwrite(b"R\n")
-
-control  = vessel.control
-flightstream = conn.add_stream(vessel.flight,vessel.orbit.body.reference_frame)
-orbit	 = vessel.orbit
-
-lastrcs = control.rcs
-lastsas = control.sas
-lastgear = control.gear
-lastlights = control.lights
-stageabort = False
-
 # may throw krpc.error.RPCError if vessel no longer active/exists,
 # should roll back to vessel = conn.space_center.active_vessel above loop
 
-# do temperature/overheat estimation in separate thread so command & control is not blocked by this
-temperature = None
-temp_pct = -1
-overheat = -1
-# do electric power estimation and low fuel in separate thread so command & control is not blocked by this
-resourcethread = None
-power_pct = -1
-lowpower = -1
-fuel_pct = -1
-lowfuel  = -1
-# do status display (G-force, LCD, OLED) in separate thread so command & control is not blocked by this
-statusthread = None
-lastgforce = -100
-lcdmode = 0
-oledmode = 0
+def main_serial_loop():
+	global conn
+	global vessel
 
-while vessel == conn.space_center.active_vessel:
-	#print("---------CONTROL")
-	#print("SAS:"+str(control.sas)+"\tRCS:"+str(control.rcs))
-	#print("Gear:"+str(control.gear)+"\tLights:"+str(control.lights))
-	#print("Throttle:"+str(control.throttle))
-	#print("---------ORBIT")
-	#print("Speed:"+str(round(orbit.speed,2)))
-	#print("Apoapsis:"+str(round(orbit.apoapsis_altitude,0))+"\tPeriapsis:"+str(round(orbit.periapsis_altitude,0)))
-	#print("Time to:"+str(round(orbit.time_to_apoapsis,0))+" s\tTime to:  "+str(round(orbit.time_to_periapsis,0))+" s")
-	#print("---------FLIGHT")
-	#print("Altitude: "+str(round(flight().mean_altitude,0))+"\tSpeed: "+str(round(speed().speed,2)))
-	#print("Pitch :"+str(round(flight().pitch,1))+"\tRoll :"+str(round(flight().roll,1))+"\t Head :"+str(round(flight().heading,1)))
+	control  = vessel.control
+	flightstream = conn.add_stream(vessel.flight,vessel.orbit.body.reference_frame)
+	orbit	 = vessel.orbit
 
-	# serial link
-	if ser.isOpen():
-		while ser.inWaiting()>0:
-			line = ser.readline().decode("utf-8").rstrip()
-#			print("Serial:["+line+"]\n----\n")
-			if line=="I":
-				lastrcs=None
-				lastsas=None
-				lastgear=None
-				lastlights=None
-				lastgforce=-100
-			if line[:3]=="P0=":
-				control.throttle = int(line[3:],16)/255
-			if line[:3]=="P1=":
-				# timewarp
-				newtimewarp = min(int(line[3:],16)/255/0.9,1)
-				railslevel = int(newtimewarp*7)
-				physlevel = int(newtimewarp*4)
-				if (conn.space_center.warp_mode == conn.space_center.WarpMode.rails):
-					conn.space_center.rails_warp_factor = railslevel
-				elif (conn.space_center.warp_mode == conn.space_center.WarpMode.physics):
-					conn.space_center.physics_warp_factor = physlevel
-				else:
-				# no time warp - try to set as rails, if failed then try to set as physics
-					conn.space_center.rails_warp_factor = railslevel
-					if (conn.space_center.warp_mode != conn.space_center.WarpMode.rails):
+	# do temperature/overheat estimation in separate thread so command & control is not blocked by this
+	temperature = None
+	temp_pct = -1
+	overheat = -1
+	# do electric power estimation and low fuel in separate thread so command & control is not blocked by this
+	resourcethread = None
+	power_pct = -1
+	lowpower = -1
+	fuel_pct = -1
+	lowfuel  = -1
+	# do status display (G-force, LCD, OLED) in separate thread so command & control is not blocked by this
+	statusthread = None
+	lastgforce = -100
+	lcdmode = 0
+	oledmode = 0
+
+	request_rcs=None
+	request_sas=None
+	request_gear=None
+	request_lights=None
+	lastrcs=None
+	lastsas=None
+	lastgear=None
+	lastlights=None
+	lastd0=None
+	lastd1=None
+	lastd2=None
+	lastd3=None
+	lastd4=None
+	lastd5=None
+	stageabort=None
+
+	try:
+		while vessel == conn.space_center.active_vessel:
+			while ser.inWaiting()>0:
+				line = ser.readline().decode("utf-8").rstrip()
+	#			print("Serial:["+line+"]\n----\n")
+				if line[:3]=="P0=":
+					control.throttle = int(line[3:],16)/255
+				if line[:3]=="P1=":
+					# timewarp
+					newtimewarp = min(int(line[3:],16)/255/0.9,1)
+					railslevel = int(newtimewarp*7)
+					physlevel = int(newtimewarp*4)
+					if (conn.space_center.warp_mode == conn.space_center.WarpMode.rails):
+						conn.space_center.rails_warp_factor = railslevel
+					elif (conn.space_center.warp_mode == conn.space_center.WarpMode.physics):
 						conn.space_center.physics_warp_factor = physlevel
-			if line=="D8=1":
-				if stageabort:
-					control.activate_next_stage()
-				else:
-					control.abort = True
-			if line=="D9=1":
-				stageabort = False; # left = abort
-			if line=="D9=0":
-				stageabort = True;  # right = stage
-			if line=="D6=0":
-				control.rcs=False
-			if line=="D6=1":
-				control.rcs=True
-			if line=="D7=0":
-				control.sas=False
-			if line=="D7=1":
-				control.sas=True
-			if line=="D5=0":
-				control.gear=False
-			if line=="D5=1":
-				control.gear=True
-			if line=="D4=0":
-				control.lights=False
-			if line=="D4=1":
-				control.lights=True
-			if line=="D3=1":
-				lcdmode = 2 # left=target
-			if line=="D3=0":
-				lcdmode = 0 # middle=orbit
-			if line=="D2=0":
-				lcdmode = 0 # middle=orbit
-			if line=="D2=1":
-				lcdmode = 1 # right=surface
+					else:
+					# no time warp - try to set as rails, if failed then try to set as physics
+						conn.space_center.rails_warp_factor = railslevel
+						if (conn.space_center.warp_mode != conn.space_center.WarpMode.rails):
+							conn.space_center.physics_warp_factor = physlevel
+				if line=="D8=1":
+					if stageabort:
+						control.activate_next_stage()
+					else:
+						control.abort = True
+				if line=="D9=1":
+					stageabort = False; # left = abort
+				if line=="D9=0":
+					stageabort = True;  # right = stage
+				if line=="D6=0":
+					request_rcs = False
+					control.rcs = request_rcs
+				if line=="D6=1":
+					request_rcs = True
+					control.rcs = request_rcs
+				if line=="D7=0":
+					request_sas = False
+					control.sas = request_sas
+				if line=="D7=1":
+					request_sas = True
+					control.sas = request_sas
+				if line=="D5=0":
+					request_gear = False
+					control.gear = request_gear
+				if line=="D5=1":
+					request_gear = True
+					control.gear = request_gear
+				if line=="D4=0":
+					request_lights = False
+					control.lights = request_lights
+				if line=="D4=1":
+					request_lights = True
+					control.lights = request_lights
+				if line=="D3=1":
+					lastd3 = 1
+				if line=="D3=0":
+					lastd3 = 0
+				if line=="D2=0":
+					lastd2 = 0
+				if line=="D2=1":
+					lastd2 = 1
+				if line=="D1=1":
+					lastd1 = 1
+				if line=="D1=0":
+					lastd1 = 0
+				if line=="D0=0":
+					lastd0 = 0
+				if line=="D0=1":
+					lastd0 = 1
 
-		# Status
-		if statusthread == None:
-			statusthread = StatusDisplays(orbit,vessel.flight,flightstream,lcdmode,oledmode,lastgforce)
-			statusthread.start()
-		elif not statusthread.is_alive():
-			lastgforce = statusthread.lastgforce
-			statusthread = None
-		# Warnings
-		# overheat <0.6, .8-.9, >.9
-		if temperature == None:
-			temperature = TempMax(vessel.parts.all,overheat)
-			temperature.start()
-		elif not temperature.is_alive():
-			temp_pct = temperature.temp_pct
-			overheat = temperature.overheat
-			temperature = None
-#			print("Max heat: "+str(round(temp_pct*100,0)))
-		# power
-		if resourcethread == None:
-			resourcethread = LowResources(vessel.resources,lowpower,power_pct,lowfuel)
-			resourcethread.start()
-		elif not resourcethread.is_alive():
-			power_pct = resourcethread.power_pct
-			lowpower = resourcethread.lowpower
-			fuel_pct = resourcethread.fuel_pct
-			lowfuel = resourcethread.lowfuel
-			resourcethread = None
-#			print("Power: "+str(round(power_pct*100,0))+" ("+str(lowpower)+")\tL.fuel: "+str(round(fuel_pct*100,0))+" ("+str(lowpower)+")")
+			if lastd3==1:
+				lcdmode = 2
+			elif lastd2==1:
+				lcdmode = 1
+			else:
+				lcdmode = 0 # middle=orbit apo/timeto/pery/timeto
 
-		# serial state change
-		if control.rcs!=lastrcs:
-			lastrcs = control.rcs
-			if lastrcs:
-				myserwrite(b"LG6=1\nLR6=0\n")
+			if lastd1==1:
+				oledmode = 2
+			elif lastd0==1:
+				oledmode = 1
 			else:
-				myserwrite(b"LG6=0\nLR6=1\n")
-		if control.sas!=lastsas:
-			lastsas = control.sas
-			if lastsas:
-				myserwrite(b"LG7=1\nLR7=0\n")
-			else:
-				myserwrite(b"LG7=0\nLR7=1\n")
-		if control.gear!=lastgear:
-			lastgear = control.gear
-			if lastgear:
-				myserwrite(b"LG5=1\nLR5=0\n")
-			else:
-				myserwrite(b"LG5=0\nLR5=1\n")
-		if control.lights!=lastlights:
-			lastlights = control.lights
-			if lastlights:
-				myserwrite(b"LG4=1\nLR4=0\n")
-			else:
-				myserwrite(b"LG4=0\nLR4=1\n")
-	myserflush()
-#	time.sleep(.1)
+				oledmode = 0
 
-# we will exit this while loop cleanly if vessel is switched
+			# handle switch state change
+			if control.rcs!=request_rcs:
+				reqval="3"
+			else:
+				reqval="0"
+			if request_rcs:
+				line = "LG6=1\nLR6="+reqval+"\n"
+			else:
+				line = "LG6="+reqval+"\nLR6=1\n"
+			if line!=lastrcs:
+				myserwrite(line.encode())
+				lastrcs = line
+
+			if control.sas!=request_sas:
+				reqval="3"
+			else:
+				reqval="0"
+			if request_sas:
+				line = "LG7=1\nLR7="+reqval+"\n"
+			else:
+				line = "LG7="+reqval+"\nLR7=1\n"
+			if line!=lastsas:
+				myserwrite(line.encode())
+				lastsas = line
+
+			if control.gear!=request_gear:
+				reqval="3"
+			else:
+				reqval="0"
+			if request_gear:
+				line = "LG5=1\nLR5="+reqval+"\n"
+			else:
+				line = "LG5="+reqval+"\nLR5=1\n"
+			if line!=lastgear:
+				myserwrite(line.encode())
+				lastgear = line
+
+			if control.lights!=request_lights:
+				reqval="3"
+			else:
+				reqval="0"
+			if request_lights:
+				line = "LG4=1\nLR4="+reqval+"\n"
+			else:
+				line = "LG4="+reqval+"\nLR4=1\n"
+			if line!=lastlights:
+				myserwrite(line.encode())
+				lastlights = line
+
+			# Status
+			if statusthread == None:
+				statusthread = StatusDisplays(orbit,vessel.flight,flightstream,lcdmode,oledmode,lastgforce)
+				statusthread.start()
+			elif not statusthread.is_alive():
+				lastgforce = statusthread.lastgforce
+				statusthread = None
+			# Warnings
+			# overheat <0.6, .8-.9, >.9
+			if temperature == None:
+				temperature = TempMax(vessel.parts.all,overheat)
+				temperature.start()
+			elif not temperature.is_alive():
+				temp_pct = temperature.temp_pct
+				overheat = temperature.overheat
+				temperature = None
+	#			print("Max heat: "+str(round(temp_pct*100,0)))
+			# power
+			if resourcethread == None:
+				resourcethread = LowResources(vessel.resources,lowpower,power_pct,lowfuel)
+				resourcethread.start()
+			elif not resourcethread.is_alive():
+				power_pct = resourcethread.power_pct
+				lowpower = resourcethread.lowpower
+				fuel_pct = resourcethread.fuel_pct
+				lowfuel = resourcethread.lowfuel
+				resourcethread = None
+	#			print("Power: "+str(round(power_pct*100,0))+" ("+str(lowpower)+")\tL.fuel: "+str(round(fuel_pct*100,0))+" ("+str(lowpower)+")")
+			myserflush()
+	except krpc.error.RPCError:
+		print("Exception")
+	else:
+		print("No exception, change of vessel")
+
+def main():
+
+	global serialLock
+	serialLock = threading.Lock()
+	lastflush = time.time()
+
+	global ser
+	ser = serial.Serial(port=ask_for_port(),baudrate=115200,timeout=0,write_timeout=0)
+
+	if not ser.isOpen():
+		print("Can't open serial port!")
+
+	global conn
+	global vessel
+	conn = None
+	print("Connecting to Kerbal Space Program kRPC\n")
+	myserwrite("P0=Connecting to\nP1=Kerbal Space Prg\n".encode())
+	while conn==None:
+		try:
+			conn = krpc.connect(name='Arduino')
+		except (krpc.error.NetworkError,ConnectionRefusedError):
+			print("Connection refused, waiting 5s")
+			myserwrite("P1=Connecting...\n".encode())
+			time.sleep(5)
+
+	print("Connection successful "+conn.krpc.get_status().version)
+
+	while True:
+		vessel = None
+		while vessel==None:
+			try:
+				vessel = conn.space_center.active_vessel
+				print("Active vessel:"+vessel.name)
+				line = "P0="+conn.krpc.get_status().version+"\n"
+				line = line+"P1="+vessel.name+"\n"
+				myserwrite(line.encode())
+				time.sleep(.5)
+				# ask for status
+				myserwrite(b"R\n")
+				main_serial_loop()
+			except krpc.error.RPCError:
+				print("Not in proper game scene")
+				myserwrite("P0=Waiting for\nP1=game scene\n".encode())
+				time.sleep(.5)
+
+if __name__ == '__main__':
+    main()

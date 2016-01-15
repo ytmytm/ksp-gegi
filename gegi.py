@@ -5,6 +5,7 @@ import threading
 from si_prefix import si_format
 from time_format import time_format
 from ask_for_port import ask_for_port
+from math import pi
 
 # atomic serial write called from main loop and from threads
 def myserwrite(line):
@@ -14,6 +15,7 @@ def myserwrite(line):
 		ser.write(line)
 
 # flush is called at the end of the loop, not from threads
+lastflush = time.time()
 def myserflush():
 	global ser
 	global lastflush
@@ -31,6 +33,7 @@ class StatusDisplays(threading.Thread):
 		self.orbit = orbit
 		self.flight = flight
 		self.flightstream = flightstream
+		self.lastoled = time.time()
 	def run(self):
 		try:
 			# g-force changed enough?
@@ -43,7 +46,7 @@ class StatusDisplays(threading.Thread):
 	#			print(gforcecommand)
 				myserwrite(gforcecommand.encode())
 			# LCD
-			if self.lcdmode==0: # switch on middle = Orbit
+			if self.lcdmode==0: # switch in middle = Orbit
 				val = self.orbit.apoapsis_altitude
 				if val>=0:
 					fval = si_format(val, precision=2).rjust(7)[:7]+" "
@@ -58,18 +61,42 @@ class StatusDisplays(threading.Thread):
 				line = line+"P1=P:"+fval+time_format(self.orbit.time_to_periapsis)+"\n"
 			elif self.lcdmode==1: # switch on right = Landing Altitude+Speed
 				fval = si_format(self.flight().surface_altitude, precision=3).rjust(8)[:8]
-				line = "P0=ALT:"+fval+"m\nP1=V"+chr(126)
+				line = "P0=ALT:"+fval+"m\nP1=V:"+chr(2)
 				ss = self.flightstream().speed
 				vs = self.flightstream().vertical_speed
 	#			print(str(ss)+"\t"+str(vs)+"\t"+str(self.flightstream().g_force)+"\t"+str(self.flight().g_force))
-				fval = si_format(abs((ss*ss-vs*vs)**(1/2)), precision=0).rjust(4)[:4]
-				line = line+fval+" v"
+				fval = si_format(abs((ss*ss-vs*vs)**(1/2)), precision=0).rjust(5)[:5]
+				line = line+fval+" "+chr(3)
 				fval = si_format(abs(vs), precision=0).rjust(5)[:5]
-				line = line+fval+"m/s\n"
+				line = line+fval+chr(1)+"\n"
 			elif self.lcdmode==2: # switch on left = Target(?)
 				line="P0=Mode 1 Left\nP1=Target mode\n"
-			#print("mode"+str(lcdmode)+" "+line)
+				line="P0=Ecnt.:"+str(round(self.orbit.eccentricity,3))+"\nP1=Incl.:"+str(round(self.orbit.inclination*180/pi,2))+"\n"
+#			print("mode"+str(self.lcdmode)+" "+line)
 			myserwrite(line.encode())
+			# OLED orbit
+			if (round((time.time()-self.lastoled)*1000))>1:
+				self.lastoled = time.time()
+				if self.oledmode==0: # switch in middle = Orbit
+					cx = 64
+					cy = 16+(64-16)/2
+					sx = self.orbit.semi_major_axis
+					sy = self.orbit.semi_minor_axis
+					print("sx="+str(sx)+"\tsy="+str(sy)+"\n")
+					scale = sx/cx
+					sx = int(sx/scale)
+					sy = int(sy/scale)
+					if sx==0: sx=1
+					if sx==64: sx=63
+					if sy==0: sy=1
+					if sy==40: sy=39
+					#line="O9 64 40 "+str(sx)+" "+str(sy)+" 1 0 10 Ecc.="+str(round(self.orbit.eccentricity,3))+"\\ 1 64 Incl.="+str(round(self.orbit.inclination*180/pi,2))+"\\ \n"
+				elif self.oledmode==1:
+					line="O1 0 10 Mode1\\ \n"
+				elif self.oledmode==2:
+					line="O1 0 10 Mode2\\ \n"
+				print("omode"+str(self.oledmode)+" "+line)
+#				myserwrite(line.encode())
 		except krpc.error.RPCError:
 			pass
 
@@ -358,7 +385,6 @@ def main():
 
 	global serialLock
 	serialLock = threading.Lock()
-	lastflush = time.time()
 
 	global ser
 	ser = serial.Serial(port=ask_for_port(),baudrate=115200,timeout=0,write_timeout=0)

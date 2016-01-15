@@ -182,6 +182,39 @@ analogOutPin analogOutPins[] = {
 //                    addr, en,rw,rs,d4,d5,d6,d7,bl,blpol
 LiquidCrystal_I2C lcd(0x3f, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 
+byte msChar[8] = {
+  0b11110,
+  0b10101,
+  0b10101,
+  0b00000,
+  0b01110,
+  0b01100,
+  0b00010,
+  0b01110
+};
+
+byte leftRightChar[8] = {
+  0b00000,
+  0b00000,
+  0b00010,
+  0b11111,
+  0b01000,
+  0b00000,
+  0b00000,
+  0b00000
+};
+
+byte upDownChar[8] = {
+  0b00100,
+  0b00110,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b01100,
+  0b00100
+};
+
 // serial port
 #define SERIAL_SPEED 115200
 
@@ -197,6 +230,10 @@ void setup() {
   // set timeout to 200ms
   Serial.setTimeout(200);
   lcd.begin(16,2);   // initialize the lcd for 16 chars 2 lines, turn on backlight
+  // setup custom characters
+  lcd.createChar(1, msChar);
+  lcd.createChar(2, leftRightChar);
+  lcd.createChar(3, upDownChar);
   lcd.setCursor(0,0);
   lcd.print("KSP-Gegi");
   lcd.setCursor(0,1);
@@ -250,12 +287,19 @@ void handleSerialInputLCD() {
 }
 
 #define OLEDBUFSIZE 512
-// initialization stuff
-uint8_t oledBuf[OLEDBUFSIZE+1] = { 0x01,0x00,0x20,0x4b,0x53,0x50,0x2d,0x47,0x65,0x67,0x69,0x00,
+uint8_t oledBuf[OLEDBUFSIZE+1];
+
+// splashscreen
+uint8_t oledSplash[] = { 0x01,0x00,0x20,0x4b,0x53,0x50,0x2d,0x47,0x65,0x67,0x69,0x00,
   0x01,0x00,0x30,0x52,0x65,0x61,0x64,0x79,0x20,0x66,0x6F,0x72,0x20,0x61,0x63,0x74,0x69,0x6F,0x6E,0x00,
   7,128,0,0,15,7,128,0,32,15,7,128,0,64,15,
   7,128,64,0,49,7,128,64,32,49,7,128,64,64,49,
   0x00 };
+
+// test mode offsets
+// j1 X/Y= 1,2; size=3,4
+// j2 X/Y= 6,7; size=8,9
+uint8_t oledTest[] = { 2, 32-1, 40-1, 3, 3, 2, 128-32-1, 40-1, 3, 3, 8, 32, 40, 23, 8, 96, 40, 23, 0 };
 
 // OLED commands
 #define OLED_DRAW_STOP  0
@@ -267,12 +311,13 @@ uint8_t oledBuf[OLEDBUFSIZE+1] = { 0x01,0x00,0x20,0x4b,0x53,0x50,0x2d,0x47,0x65,
 #define OLED_DRAW_VLINE 6 // followed by x y height
 #define OLED_DRAW_LINE  7 // followed by x1 y1 x2 y2
 #define OLED_DRAW_CIRCLE 8 // followed by x y radius
+#define OLED_DRAW_ELLIPSE 9 // followed by x y rx ry
 
 void drawOLED(void) {
   // graphic commands to redraw the complete screen should be placed here
   u8g.setFont(u8g_font_unifontr); // reduced font, only glyphs 0x20-0x7f
   uint16_t i=0;
-  uint8_t cmd, x, y, w, h, x2, y2, radius;
+  uint8_t cmd, x, y, w, h, x2, y2, radius, rx, ry;
   while ((i<OLEDBUFSIZE) && oledBuf[i]!=0) {
     cmd = oledBuf[i++];
     if (OLED_DRAW_STOP==cmd) break; // stop immediately if commanded
@@ -321,6 +366,11 @@ void drawOLED(void) {
 //          Serial.print("rad="); Serial.println(radius);
           u8g.drawCircle(x,y,radius);
           break;
+        case OLED_DRAW_ELLIPSE:
+          rx = oledBuf[i++]; ry = oledBuf[i++];
+//          Serial.print("rx="); Serial.print(rx); Serial.print(" ry="); Serial.println(ry);
+          u8g.drawEllipse(x,y,rx,ry);
+          break;
     }
   }
 }
@@ -349,6 +399,7 @@ void handleSerialInputOLED() {
         case OLED_DRAW_BOX:
         case OLED_DRAW_FRAME:
         case OLED_DRAW_LINE:
+        case OLED_DRAW_ELLIPSE:
           oledBuf[i++] = Serial.parseInt(); // read two more bytes (one here, one below)
         case OLED_DRAW_HLINE:
         case OLED_DRAW_VLINE:
@@ -420,6 +471,9 @@ void handleStatusReset() {
   Serial1.println("R");
   // request status update
   Serial.println("I");
+  // show splashscreen
+  memcpy(oledBuf, oledSplash, sizeof(oledSplash)+1);
+  oledRedraw();
 }
 
 // pass data from USB host (PC) to UART
@@ -488,6 +542,22 @@ void updatePins(const bool force) {
 void handleTestMode() {
 	analogOutPins[0].updateState(analogInPins[0].getAValue());
 	analogOutPins[1].updateState(analogInPins[1].getAValue());
+  //
+// j1 X/Y= 1,2; size=3,4
+// j2 X/Y= 6,7; size=8,9
+  uint8_t psize;
+  psize = joy1switch ? 4 : 3;
+  oledTest[3] = psize;
+  oledTest[4] = psize;
+  psize = joy2switch ? 4 : 3;
+  oledTest[8] = psize;
+  oledTest[9] = psize;
+  oledTest[1] = 32-1+23*(analogInPins[2].getAValue()-127) / 127;
+  oledTest[2] = 40-1+23*(analogInPins[3].getAValue()-127) / 127;
+  oledTest[6] = 128-32-1+23*(analogInPins[4].getAValue()-127) / 127;
+  oledTest[7] = 40-1+23*(analogInPins[5].getAValue()-127) / 127;
+  memcpy(oledBuf, oledTest, sizeof(oledTest)+1);
+  oledRedraw();
 }
 
 void loop() {

@@ -5,7 +5,7 @@ import threading
 from si_prefix import si_format
 from time_format import time_format
 from ask_for_port import ask_for_port
-from math import pi
+from math import pi, sin, cos
 
 # atomic serial write called from main loop and from threads
 def myserwrite(line):
@@ -25,7 +25,7 @@ def myserflush():
 
 # thread to display status (G-force, LCD, OLED)
 class StatusDisplays(threading.Thread):
-	def __init__(self,orbit,flight,flightstream,lcdmode,oledmode,lastgforce):
+	def __init__(self,orbit,flight,flightstream,lcdmode,oledmode,lastgforce,lastoledline,lastoledtime):
 		super(StatusDisplays, self).__init__()
 		self.lcdmode = lcdmode
 		self.oledmode = oledmode
@@ -33,7 +33,8 @@ class StatusDisplays(threading.Thread):
 		self.orbit = orbit
 		self.flight = flight
 		self.flightstream = flightstream
-		self.lastoled = time.time()
+		self.lastoledtime = lastoledtime
+		self.lastoledline = lastoledline
 	def run(self):
 		try:
 			# g-force changed enough?
@@ -71,32 +72,45 @@ class StatusDisplays(threading.Thread):
 				line = line+fval+chr(1)+"\n"
 			elif self.lcdmode==2: # switch on left = Target(?)
 				line="P0=Mode 1 Left\nP1=Target mode\n"
-				line="P0=Ecnt.:"+str(round(self.orbit.eccentricity,3))+"\nP1=Incl.:"+str(round(self.orbit.inclination*180/pi,2))+"\n"
+				line="P0=Ecct.:"+str(round(self.orbit.eccentricity,3))+"\nP1=Incl.:"+str(round(self.orbit.inclination*180/pi,2))+chr(223)+"\n"
 #			print("mode"+str(self.lcdmode)+" "+line)
-			myserwrite(line.encode())
+			myserwrite(bytes([x for x in map(ord,line)]))
 			# OLED orbit
-			if (round((time.time()-self.lastoled)*1000))>1:
-				self.lastoled = time.time()
+			if (time.time()-self.lastoledtime)>2: # every 2s
+				self.lastoledtime = time.time()
 				if self.oledmode==0: # switch in middle = Orbit
-					cx = 64
-					cy = 16+(64-16)/2
+					cx = int(128/2)
+					cy = int(16+(64-16)/2)
 					sx = self.orbit.semi_major_axis
 					sy = self.orbit.semi_minor_axis
-					print("sx="+str(sx)+"\tsy="+str(sy)+"\n")
-					scale = sx/cx
-					sx = int(sx/scale)
-					sy = int(sy/scale)
-					if sx==0: sx=1
-					if sx==64: sx=63
-					if sy==0: sy=1
-					if sy==40: sy=39
-					#line="O9 64 40 "+str(sx)+" "+str(sy)+" 1 0 10 Ecc.="+str(round(self.orbit.eccentricity,3))+"\\ 1 64 Incl.="+str(round(self.orbit.inclination*180/pi,2))+"\\ \n"
+#					print("sx="+str(sx)+"\tsy="+str(sy)+"\n")
+					try:
+						scalex = sx/cx
+						scaley = sy/((64-16)/2)
+						scale = min(scalex,scaley)
+						sx = int(sx/scale)
+						sy = int(sy/scale)
+						if sx==0: sx=1
+						if sx>=64: sx=63
+						if sy==0: sy=1
+						if sy>=48: sy=47
+						line="O5 "+str(int(cx-sx/2))+" "+str(cy)+" "+str(sx)+" "
+						line=line+"6 "+str(cx)+" "+str(int(cy-sy/2))+" "+str(sy)+" "
+						line=line+"9 "+str(cx)+" "+str(cy)+" "+str(int(sx/3))+" "+str(int(sy/3))+" "
+						ec = pi/2-self.orbit.inclination
+						sx = int(cx+24*sin(ec))
+						sy = int(cy-24*cos(ec))
+						line=line+"7 "+str(cx)+" "+str(cy)+" "+str(sx)+" "+str(sy)+"\n"
+					except ValueError:
+						line=self.lastoledline
 				elif self.oledmode==1:
-					line="O1 0 10 Mode1\\ \n"
+					line="O1 10 10 Mode1\\ \n"
 				elif self.oledmode==2:
-					line="O1 0 10 Mode2\\ \n"
-				print("omode"+str(self.oledmode)+" "+line)
-#				myserwrite(line.encode())
+					line="O1 10 10 Mode2\\ \n"
+#				print("omode"+str(self.oledmode)+"\\"+line+"\\")
+				if line!=self.lastoledline:
+					self.lastoledline=line
+					myserwrite(line.encode())
 		except krpc.error.RPCError:
 			pass
 
@@ -196,6 +210,8 @@ def main_serial_loop():
 	lastgforce = -100
 	lcdmode = 0
 	oledmode = 0
+	lastoledline = None
+	lastoledtime = time.time()
 
 	request_rcs=None
 	request_sas=None
@@ -349,10 +365,12 @@ def main_serial_loop():
 
 			# Status
 			if statusthread == None:
-				statusthread = StatusDisplays(orbit,vessel.flight,flightstream,lcdmode,oledmode,lastgforce)
+				statusthread = StatusDisplays(orbit,vessel.flight,flightstream,lcdmode,oledmode,lastgforce,lastoledline,lastoledtime)
 				statusthread.start()
 			elif not statusthread.is_alive():
 				lastgforce = statusthread.lastgforce
+				lastoledline = statusthread.lastoledline
+				lastoledtime = statusthread.lastoledtime
 				statusthread = None
 			# Warnings
 			# overheat <0.6, .8-.9, >.9

@@ -63,12 +63,10 @@ class StatusDisplays(threading.Thread):
 			elif self.lcdmode==1: # switch on right = Landing Altitude+Speed
 				fval = si_format(self.flight().surface_altitude, precision=3).rjust(8)[:8]
 				line = "P0=ALT:"+fval+"m\nP1=V:"+chr(2)
-				ss = self.flightstream().speed
-				vs = self.flightstream().vertical_speed
 	#			print(str(ss)+"\t"+str(vs)+"\t"+str(self.flightstream().g_force)+"\t"+str(self.flight().g_force))
-				fval = si_format(abs((ss*ss-vs*vs)**(1/2)), precision=0).rjust(5)[:5]
+				fval = si_format(abs(self.flightstream().horizontal_speed), precision=0).rjust(5)[:5]
 				line = line+fval+" "+chr(3)
-				fval = si_format(abs(vs), precision=0).rjust(5)[:5]
+				fval = si_format(abs(self.flightstream().vertical_speed), precision=0).rjust(5)[:5]
 				line = line+fval+chr(1)+"\n"
 			elif self.lcdmode==2: # switch on left = Target(?)
 				line="P0=Mode 1 Left\nP1=Target mode\n"

@@ -210,6 +210,8 @@ def main_serial_loop():
 	oledmode = 0
 	lastoledline = None
 	lastoledtime = time.time()
+	laststageclear = True
+	laststagetime = time.time()
 
 	request_rcs=None
 	request_sas=None
@@ -250,9 +252,15 @@ def main_serial_loop():
 							conn.space_center.physics_warp_factor = physlevel
 				if line=="D8=1":
 					if stageabort:
-						control.activate_next_stage()
+            # stage
+						if laststageclear and (time.time()-laststagetime)>.5: # at least .5s delay between staging and D8 must be released between staging
+							laststageclear = False
+							laststagetime = time.time()
+							control.activate_next_stage()
 					else:
 						control.abort = True
+				if line=="D8=0":
+					laststageclear = True # release D8
 				if line=="D9=1":
 					stageabort = False; # left = abort
 				if line=="D9=0":

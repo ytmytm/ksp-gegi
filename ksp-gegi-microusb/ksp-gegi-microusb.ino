@@ -131,7 +131,7 @@ void analogInPin::updateJoystick() const {
 				Joystick.setXAxisRotation(map(m_lastRValue, 0, 1023, 0, 359));
 			} else {
 				Joystick.setXAxis(m_lastAValue-127);
-				Joystick.setXAxisRotation(0);
+				Joystick.setXAxisRotation(180);
 			}
 			break;
 		case 3: // joy1y Y on: rotation, off: axis
@@ -140,7 +140,7 @@ void analogInPin::updateJoystick() const {
 				Joystick.setYAxisRotation(map(m_lastRValue, 0, 1023, 0, 359));
 			} else {
 				Joystick.setYAxis(m_lastAValue-127);
-				Joystick.setYAxisRotation(0);
+				Joystick.setYAxisRotation(180);
 			}
 			break;
 		case 4: // joy2x Z on: rotation, off: axis
@@ -149,12 +149,12 @@ void analogInPin::updateJoystick() const {
 				Joystick.setZAxisRotation(map(m_lastRValue, 0, 1023, 0, 359));
 			} else {
 				Joystick.setZAxis(m_lastAValue-127);
-				Joystick.setZAxisRotation(0);
+				Joystick.setZAxisRotation(180);
 			}
 			break;
 		case 5: // joy2y on: ignore, off: rudder
 			if (joy1switch) {
-				Joystick.setRudder(0);
+				Joystick.setRudder(128);
 			} else {
 				Joystick.setRudder(m_lastAValue);
 			}

@@ -193,10 +193,18 @@ def main_serial_loop():
 	flightstream = conn.add_stream(vessel.flight,vessel.orbit.body.reference_frame)
 	orbit	 = vessel.orbit
 
+  # is kRPCGegi supported?
+	krpcgegi = True
+	try:
+		temp_pct = conn.gegi.max_temp_pct
+	except AttributeError:
+		krpcgegi = False
+
 	# do temperature/overheat estimation in separate thread so command & control is not blocked by this
 	temperature = None
 	temp_pct = -1
 	overheat = -1
+	lasttemptime = time.time()
 	# do electric power estimation and low fuel in separate thread so command & control is not blocked by this
 	resourcethread = None
 	power_pct = -1
@@ -380,14 +388,29 @@ def main_serial_loop():
 				statusthread = None
 			# Warnings
 			# overheat <0.6, .8-.9, >.9
-			if temperature == None:
-				temperature = TempMax(vessel.parts.all,overheat)
-				temperature.start()
-			elif not temperature.is_alive():
-				temp_pct = temperature.temp_pct
-				overheat = temperature.overheat
-				temperature = None
-	#			print("Max heat: "+str(round(temp_pct*100,0)))
+			if krpcgegi:
+				temp_pct = conn.gegi.max_temp_pct
+				if ((temp_pct<0.6) and (overheat!=0)):
+				  overheat = 0
+				  myserwrite(b"LG12=1\nLR12=0\n")
+				if ((temp_pct>=0.6) and (temp_pct<0.8) and (overheat!=1)):
+				  overheat = 1
+				  myserwrite(b"LG12=0\nLR12=1\n")
+				if ((temp_pct>=0.8) and (overheat!=2)):
+				  overheat = 2
+				  myserwrite(b"LG12=0\nLR12=3\n")
+#				print("Max heat: "+str(round(temp_pct*100,0))+" gegiservice:"+str(krpcgegi)+" time="+str(time.time()-lasttemptime))
+				lasttemptime = time.time()
+			else:
+				if temperature == None:
+				  temperature = TempMax(vessel.parts.all,overheat)
+				  temperature.start()
+				elif not temperature.is_alive():
+				  temp_pct = temperature.temp_pct
+				  overheat = temperature.overheat
+				  temperature = None
+#				  print("Max heat: "+str(round(temp_pct*100,0))+" gegiservice:"+str(krpcgegi)+" time="+str(time.time()-lasttemptime))
+				  lasttemptime = time.time()
 			# power
 			if resourcethread == None:
 				resourcethread = LowResources(vessel.resources,lowpower,power_pct,lowfuel)

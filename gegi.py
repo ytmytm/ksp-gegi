@@ -2,6 +2,7 @@ import krpc
 import time
 import serial
 import threading
+import sys
 from si_prefix import si_format
 from time_format import time_format
 from ask_for_port import ask_for_port
@@ -112,31 +113,6 @@ class StatusDisplays(threading.Thread):
 		except krpc.error.RPCError:
 			pass
 
-# thread to calculate overheat [max(% temp/maxtemp) for each part]
-class TempMax(threading.Thread):
-	def __init__(self,parts,overheat):
-		super(TempMax, self).__init__()
-		self.overheat = overheat
-		self.parts = parts
-		self.temp_pct = 0
-	def run(self):
-		try:
-			self.temp_pct=max([max(part.temperature/part.max_temperature,part.skin_temperature/part.max_skin_temperature) for part in self.parts])
-		except ValueError:
-			self.temp_pct = 0
-		except krpc.error.RPCError:
-			pass
-		if ((self.temp_pct<0.6) and (self.overheat!=0)):
-			self.overheat = 0
-			myserwrite(b"LG12=1\nLR12=0\n")
-		if ((self.temp_pct>=0.6) and (self.temp_pct<0.8) and (self.overheat!=1)):
-			self.overheat = 1
-			myserwrite(b"LG12=0\nLR12=1\n")
-		if ((self.temp_pct>=0.8) and (self.overheat!=2)):
-			self.overheat = 2
-			myserwrite(b"LG12=0\nLR12=3\n")
-#		threading.Thread.__init__(self) # this allows to call start() again on this thread, but the vessel may have lost parts in the meantime
-
 # thread to calculate low power/low fuel
 class LowResources(threading.Thread):
 	def __init__(self,resources,lowpower,lastpowerpct,lowfuel):
@@ -193,15 +169,7 @@ def main_serial_loop():
 	flightstream = conn.add_stream(vessel.flight,vessel.orbit.body.reference_frame)
 	orbit	 = vessel.orbit
 
-  # is kRPCGegi supported?
-	krpcgegi = True
-	try:
-		temp_pct = conn.gegi.max_temp_pct
-	except AttributeError:
-		krpcgegi = False
-
 	# do temperature/overheat estimation in separate thread so command & control is not blocked by this
-	temperature = None
 	temp_pct = -1
 	overheat = -1
 	lasttemptime = time.time()
@@ -388,29 +356,18 @@ def main_serial_loop():
 				statusthread = None
 			# Warnings
 			# overheat <0.6, .8-.9, >.9
-			if krpcgegi:
-				temp_pct = conn.gegi.max_temp_pct
-				if ((temp_pct<0.6) and (overheat!=0)):
-				  overheat = 0
-				  myserwrite(b"LG12=1\nLR12=0\n")
-				if ((temp_pct>=0.6) and (temp_pct<0.8) and (overheat!=1)):
-				  overheat = 1
-				  myserwrite(b"LG12=0\nLR12=1\n")
-				if ((temp_pct>=0.8) and (overheat!=2)):
-				  overheat = 2
-				  myserwrite(b"LG12=0\nLR12=3\n")
-#				print("Max heat: "+str(round(temp_pct*100,0))+" gegiservice:"+str(krpcgegi)+" time="+str(time.time()-lasttemptime))
-				lasttemptime = time.time()
-			else:
-				if temperature == None:
-				  temperature = TempMax(vessel.parts.all,overheat)
-				  temperature.start()
-				elif not temperature.is_alive():
-				  temp_pct = temperature.temp_pct
-				  overheat = temperature.overheat
-				  temperature = None
-#				  print("Max heat: "+str(round(temp_pct*100,0))+" gegiservice:"+str(krpcgegi)+" time="+str(time.time()-lasttemptime))
-				  lasttemptime = time.time()
+			temp_pct = conn.gegi.max_temp_pct
+			if ((temp_pct<0.6) and (overheat!=0)):
+				overheat = 0
+				myserwrite(b"LG12=1\nLR12=0\n")
+			if ((temp_pct>=0.6) and (temp_pct<0.8) and (overheat!=1)):
+				overheat = 1
+				myserwrite(b"LG12=0\nLR12=1\n")
+			if ((temp_pct>=0.8) and (overheat!=2)):
+				overheat = 2
+				myserwrite(b"LG12=0\nLR12=3\n")
+#      print("Max heat: "+str(round(temp_pct*100,0))+" gegiservice:"+str(krpcgegi)+" time="+str(time.time()-lasttemptime))
+			lasttemptime = time.time()
 			# power
 			if resourcethread == None:
 				resourcethread = LowResources(vessel.resources,lowpower,power_pct,lowfuel)
@@ -453,6 +410,14 @@ def main():
 			time.sleep(5)
 
 	print("Connection successful "+conn.krpc.get_status().version)
+
+  # is kRPCGegi supported?
+	try:
+		print("Checking for kRPC Gegi service\n")
+		check = conn.gegi.max_temp_pct
+	except AttributeError:
+		sys.exit("kRPC GEGI service not available. Make sure that kRPCGegi.dll is in GameData/kRPC directory")
+	print("kRPC Gegi available\n")
 
 	while True:
 		vessel = None

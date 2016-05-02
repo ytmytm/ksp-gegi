@@ -232,7 +232,7 @@ def main_serial_loop():
 				if line=="D8=1":
 					if stageabort:
             # stage
-						if laststageclear and (time.time()-laststagetime)>.5: # at least .5s delay between staging and D8 must be released between staging
+						if laststageclear and (time.time()-laststagetime)>1: # at least 1s delay between staging and D8 must be released between staging
 							laststageclear = False
 							laststagetime = time.time()
 							control.activate_next_stage()

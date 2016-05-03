@@ -115,20 +115,23 @@ class StatusDisplays(threading.Thread):
 
 # thread to calculate low power/low fuel
 class LowResources(threading.Thread):
-	def __init__(self,resources,lowpower,lastpowerpct,lowfuel):
+	def __init__(self,lowpower,lastpowerpct,lowfuel,resourceelectricmaxstream,resourceelectriccurstream,resourceliquidfuelmaxstream,resourceliquidfuelcurstream):
 		super(LowResources, self).__init__()
-		self.resources = resources
 		self.lowpower = lowpower
 		self.power_pct = 0
 		self.lastpowerpct = lastpowerpct
 		self.lowfuel = lowfuel
 		self.fuel_pct = 0
+		self.electricmax = resourceelectricmaxstream
+		self.electriccur = resourceelectriccurstream
+		self.liquidfuelmax = resourceliquidfuelmaxstream
+		self.liquidfuelcur = resourceliquidfuelcurstream
 	def run(self):
-		# power
 		try:
-			rmax = self.resources.max('ElectricCharge')
+			# power
+			rmax = self.electricmax()
 			if rmax>0:
-				self.power_pct = self.resources.amount('ElectricCharge')/rmax
+				self.power_pct = self.electriccur()/rmax
 			if (abs(self.power_pct-self.lastpowerpct)>0.01):
 				self.lastpowerpct = self.power_pct
 				powercommand = "A1="+str(int(self.power_pct*255))+"\n"
@@ -142,10 +145,14 @@ class LowResources(threading.Thread):
 			if ((self.power_pct<=.1) and (self.lowpower!=2)):
 				self.lowpower = 2
 				myserwrite(b"LG11=0\nLR11=3\n")
-			rmax = self.resources.max('LiquidFuel')
-			if rmax>0:
-				self.fuel_pct = self.resources.amount('LiquidFuel')/rmax
+		except krpc.error.RPCError:
+				print("krpcerrorpower")
+				pass
+		try:
 			# fuel
+			rmax = self.liquidfuelmax()
+			if rmax>0:
+				self.fuel_pct = self.liquidfuelcur()/rmax
 			if (((self.fuel_pct>=.2) or (self.fuel_pct==0)) and (self.lowfuel!=0)):
 				self.lowfuel = 0
 				myserwrite(b"LG10=1\nLR10=0\n")
@@ -156,7 +163,8 @@ class LowResources(threading.Thread):
 				self.lowfuel = 2
 				myserwrite(b"LG10=0\nLR10=3\n")
 		except krpc.error.RPCError:
-			pass
+				print("krpcerrorfuel")
+				pass
 
 # may throw krpc.error.RPCError if vessel no longer active/exists,
 # should roll back to vessel = conn.space_center.active_vessel above loop
@@ -181,6 +189,10 @@ def main_serial_loop():
 	# do electric power estimation and low fuel in separate thread so command & control is not blocked by this
 	resourcethread = None
 	power_pct = -1
+	resourceelectricmaxstream = conn.add_stream(vessel.resources.max,'ElectricCharge')
+	resourceelectriccurstream = conn.add_stream(vessel.resources.amount,'ElectricCharge')
+	resourceliquidfuelmaxstream = conn.add_stream(vessel.resources.max,'LiquidFuel')
+	resourceliquidfuelcurstream = conn.add_stream(vessel.resources.amount,'LiquidFuel')
 	lowpower = -1
 	fuel_pct = -1
 	lowfuel  = -1
@@ -378,7 +390,7 @@ def main_serial_loop():
 			lasttemptime = time.time()
 			# power
 			if resourcethread == None:
-				resourcethread = LowResources(vessel.resources,lowpower,power_pct,lowfuel)
+				resourcethread = LowResources(lowpower,power_pct,lowfuel,resourceelectricmaxstream,resourceelectriccurstream,resourceliquidfuelmaxstream,resourceliquidfuelcurstream)
 				resourcethread.start()
 			elif not resourcethread.is_alive():
 				power_pct = resourcethread.power_pct

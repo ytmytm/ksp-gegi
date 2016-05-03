@@ -179,7 +179,7 @@ def main_serial_loop():
 					try:
 						control.throttle = int(line[3:],16)/255
 					except ValueError:
-						sys.exit("Throttle conversion problem: ["+line+"]:\n")
+						print("Throttle conversion problem: ["+line+"]:\n")
 				if line[:3]=="P1=":
 					# timewarp
 					newtimewarp = min(int(line[3:],16)/255/0.9,1)

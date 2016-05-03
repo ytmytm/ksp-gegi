@@ -167,6 +167,11 @@ def main_serial_loop():
 
 	control  = vessel.control
 	flightstream = conn.add_stream(vessel.flight,vessel.orbit.body.reference_frame)
+	maxtmpstream = conn.add_stream(conn.gegi.active_gegi.max_temp_pct)
+	sasstream = conn.add_stream(getattr,vessel.control,'sas')
+	rcsstream = conn.add_stream(getattr,vessel.control,'rcs')
+	gearstream = conn.add_stream(getattr,vessel.control,'gear')
+	lightstream = conn.add_stream(getattr,vessel.control,'lights')
 	orbit	 = vessel.orbit
 
 	# do temperature/overheat estimation in separate thread so command & control is not blocked by this
@@ -300,7 +305,7 @@ def main_serial_loop():
 				oledmode = 0
 
 			# handle switch state change
-			if control.rcs!=request_rcs:
+			if rcsstream()!=request_rcs:
 				reqval="3"
 			else:
 				reqval="0"
@@ -312,7 +317,7 @@ def main_serial_loop():
 				myserwrite(line.encode())
 				lastrcs = line
 
-			if control.sas!=request_sas:
+			if sasstream()!=request_sas:
 				reqval="3"
 			else:
 				reqval="0"
@@ -324,7 +329,7 @@ def main_serial_loop():
 				myserwrite(line.encode())
 				lastsas = line
 
-			if control.gear!=request_gear:
+			if gearstream()!=request_gear:
 				reqval="3"
 			else:
 				reqval="0"
@@ -336,7 +341,7 @@ def main_serial_loop():
 				myserwrite(line.encode())
 				lastgear = line
 
-			if control.lights!=request_lights:
+			if lightstream()!=request_lights:
 				reqval="3"
 			else:
 				reqval="0"
@@ -359,7 +364,7 @@ def main_serial_loop():
 				statusthread = None
 			# Warnings
 			# overheat <0.6, .8-.9, >.9
-			temp_pct = conn.gegi.max_temp_pct
+			temp_pct = maxtmpstream()
 			if ((temp_pct<0.6) and (overheat!=0)):
 				overheat = 0
 				myserwrite(b"LG12=1\nLR12=0\n")
@@ -417,7 +422,7 @@ def main():
   # is kRPCGegi supported?
 	try:
 		print("Checking for kRPC Gegi service\n")
-		check = conn.gegi.max_temp_pct
+		check = conn.gegi.active_gegi.max_temp_pct()
 	except AttributeError:
 		sys.exit("kRPC GEGI service not available. Make sure that kRPCGegi.dll is in GameData/kRPC directory")
 	print("kRPC Gegi available\n")

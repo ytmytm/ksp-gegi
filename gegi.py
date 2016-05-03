@@ -20,9 +20,10 @@ lastflush = time.time()
 def myserflush():
 	global ser
 	global lastflush
-	print("Flush!"+str(round((time.time()-lastflush)*1000))+"\t")
-	lastflush = time.time()
-	ser.flush()
+	if (ser.out_waiting>0):
+		ser.flush()
+		print("Flush!"+str(round((time.time()-lastflush)*1000))+"\t"+str(ser.out_waiting))
+		lastflush = time.time()
 
 # thread to display status (G-force, LCD, OLED)
 class StatusDisplays(threading.Thread):

@@ -113,59 +113,6 @@ class StatusDisplays(threading.Thread):
 		except krpc.error.RPCError:
 			pass
 
-# thread to calculate low power/low fuel
-class LowResources(threading.Thread):
-	def __init__(self,lowpower,lastpowerpct,lowfuel,resourceelectricmaxstream,resourceelectriccurstream,resourceliquidfuelmaxstream,resourceliquidfuelcurstream):
-		super(LowResources, self).__init__()
-		self.lowpower = lowpower
-		self.power_pct = 0
-		self.lastpowerpct = lastpowerpct
-		self.lowfuel = lowfuel
-		self.fuel_pct = 0
-		self.electricmax = resourceelectricmaxstream
-		self.electriccur = resourceelectriccurstream
-		self.liquidfuelmax = resourceliquidfuelmaxstream
-		self.liquidfuelcur = resourceliquidfuelcurstream
-	def run(self):
-		try:
-			# power
-			rmax = self.electricmax()
-			if rmax>0:
-				self.power_pct = self.electriccur()/rmax
-			if (abs(self.power_pct-self.lastpowerpct)>0.01):
-				self.lastpowerpct = self.power_pct
-				powercommand = "A1="+str(int(self.power_pct*255))+"\n"
-				myserwrite(powercommand.encode())
-			if ((self.power_pct>=.2) and (self.lowpower!=0)):
-				self.lowpower = 0
-				myserwrite(b"LG11=1\nLR11=0\n")
-			if ((self.power_pct<.2) and (self.power_pct>.1) and (self.lowpower!=1)):
-				self.lowpower = 1
-				myserwrite(b"LG11=0\nLR11=1\n")
-			if ((self.power_pct<=.1) and (self.lowpower!=2)):
-				self.lowpower = 2
-				myserwrite(b"LG11=0\nLR11=3\n")
-		except krpc.error.RPCError:
-				print("krpcerrorpower")
-				pass
-		try:
-			# fuel
-			rmax = self.liquidfuelmax()
-			if rmax>0:
-				self.fuel_pct = self.liquidfuelcur()/rmax
-			if (((self.fuel_pct>=.2) or (self.fuel_pct==0)) and (self.lowfuel!=0)):
-				self.lowfuel = 0
-				myserwrite(b"LG10=1\nLR10=0\n")
-			if ((self.fuel_pct<.2) and (self.fuel_pct>.1) and (self.lowfuel!=1)):
-				self.lowfuel = 1
-				myserwrite(b"LG10=0\nLR10=1\n")
-			if ((self.fuel_pct<=.1) and (self.fuel_pct>0) and (self.lowfuel!=2)):
-				self.lowfuel = 2
-				myserwrite(b"LG10=0\nLR10=3\n")
-		except krpc.error.RPCError:
-				print("krpcerrorfuel")
-				pass
-
 # may throw krpc.error.RPCError if vessel no longer active/exists,
 # should roll back to vessel = conn.space_center.active_vessel above loop
 
@@ -185,14 +132,14 @@ def main_serial_loop():
 	# do temperature/overheat estimation in separate thread so command & control is not blocked by this
 	temp_pct = -1
 	overheat = -1
-	lasttemptime = time.time()
 	# do electric power estimation and low fuel in separate thread so command & control is not blocked by this
 	resourcethread = None
-	power_pct = -1
 	resourceelectricmaxstream = conn.add_stream(vessel.resources.max,'ElectricCharge')
 	resourceelectriccurstream = conn.add_stream(vessel.resources.amount,'ElectricCharge')
 	resourceliquidfuelmaxstream = conn.add_stream(vessel.resources.max,'LiquidFuel')
 	resourceliquidfuelcurstream = conn.add_stream(vessel.resources.amount,'LiquidFuel')
+	power_pct = -1
+	lastpowerpct = 0
 	lowpower = -1
 	fuel_pct = -1
 	lowfuel  = -1
@@ -389,16 +336,36 @@ def main_serial_loop():
 #      print("Max heat: "+str(round(temp_pct*100,0))+" gegiservice:"+str(krpcgegi)+" time="+str(time.time()-lasttemptime))
 			lasttemptime = time.time()
 			# power
-			if resourcethread == None:
-				resourcethread = LowResources(lowpower,power_pct,lowfuel,resourceelectricmaxstream,resourceelectriccurstream,resourceliquidfuelmaxstream,resourceliquidfuelcurstream)
-				resourcethread.start()
-			elif not resourcethread.is_alive():
-				power_pct = resourcethread.power_pct
-				lowpower = resourcethread.lowpower
-				fuel_pct = resourcethread.fuel_pct
-				lowfuel = resourcethread.lowfuel
-				resourcethread = None
-	#			print("Power: "+str(round(power_pct*100,0))+" ("+str(lowpower)+")\tL.fuel: "+str(round(fuel_pct*100,0))+" ("+str(lowpower)+")")
+			rmax = resourceelectricmaxstream()
+			if rmax>0:
+				power_pct = resourceelectriccurstream()/rmax
+			if (abs(power_pct-lastpowerpct)>0.01):
+				lastpowerpct = power_pct
+				powercommand = "A1="+str(int(power_pct*255))+"\n"
+				myserwrite(powercommand.encode())
+			if ((power_pct>=.2) and (lowpower!=0)):
+				lowpower = 0
+				myserwrite(b"LG11=1\nLR11=0\n")
+			if ((power_pct<.2) and (power_pct>.1) and (lowpower!=1)):
+				lowpower = 1
+				myserwrite(b"LG11=0\nLR11=1\n")
+			if ((power_pct<=.1) and (lowpower!=2)):
+				lowpower = 2
+				myserwrite(b"LG11=0\nLR11=3\n")
+			# fuel
+			rmax = resourceliquidfuelmaxstream()
+			if rmax>0:
+				fuel_pct = resourceliquidfuelcurstream()/rmax
+			if (((fuel_pct>=.2) or (fuel_pct==0)) and (lowfuel!=0)):
+				lowfuel = 0
+				myserwrite(b"LG10=1\nLR10=0\n")
+			if ((fuel_pct<.2) and (fuel_pct>.1) and (lowfuel!=1)):
+				lowfuel = 1
+				myserwrite(b"LG10=0\nLR10=1\n")
+			if ((fuel_pct<=.1) and (fuel_pct>0) and (lowfuel!=2)):
+				lowfuel = 2
+				myserwrite(b"LG10=0\nLR10=3\n")
+
 			myserflush()
 	except krpc.error.RPCError:
 		print("Exception")

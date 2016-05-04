@@ -20,27 +20,33 @@ lastflush = time.time()
 def myserflush():
 	global ser
 	global lastflush
-	if (ser.out_waiting>0):
+	if (True or ser.out_waiting>0):
 		ser.flush()
 		print("Flush!"+str(round((time.time()-lastflush)*1000))+"\t"+str(ser.out_waiting))
 		lastflush = time.time()
 
 # thread to display status (G-force, LCD, OLED)
 class StatusDisplays(threading.Thread):
-	def __init__(self,orbit,flight,flightstream,lcdmode,oledmode,lastgforce,lastoledline,lastoledtime):
+	def __init__(self,flightstream,lcdmode,oledmode,lastgforce,lastoledline,lastoledtime,orbitstreamapoalt,orbitstreamapotime,orbitstreamperialt,orbitstreamperitime,orbitstreamecc,orbitstreamincl,orbitstreamsemimajor,orbitstreamsemiminor):
 		super(StatusDisplays, self).__init__()
 		self.lcdmode = lcdmode
 		self.oledmode = oledmode
 		self.lastgforce = lastgforce
-		self.orbit = orbit
-		self.flight = flight
 		self.flightstream = flightstream
 		self.lastoledtime = lastoledtime
 		self.lastoledline = lastoledline
+		self.orbitstreamapoalt = orbitstreamapoalt
+		self.orbitstreamapotime = orbitstreamapotime
+		self.orbitstreamperialt = orbitstreamperialt
+		self.orbitstreamperitime = orbitstreamperitime
+		self.orbitstreamecc = orbitstreamecc
+		self.orbitstreamincl = orbitstreamincl
+		self.orbitstreamsemiminor = orbitstreamsemiminor
+		self.orbitstreamsemimajor = orbitstreamsemimajor
 	def run(self):
 		try:
 			# g-force changed enough?
-			newgforce = self.flight().g_force
+			newgforce = self.flightstream().g_force
 			if (abs(newgforce-self.lastgforce)>0.01):
 				self.lastgforce = newgforce
 				newgforce = min(abs(newgforce),5)
@@ -50,20 +56,20 @@ class StatusDisplays(threading.Thread):
 				myserwrite(gforcecommand.encode())
 			# LCD
 			if self.lcdmode==0: # switch in middle = Orbit
-				val = self.orbit.apoapsis_altitude
+				val = self.orbitstreamapoalt()
 				if val>=0:
 					fval = si_format(val, precision=2).rjust(7)[:7]+" "
 				else:
 					fval = si_format(val, precision=2).rjust(8)[:8]
-				line = "P0=A:"+fval+time_format(self.orbit.time_to_apoapsis)+"\n"
-				val = self.orbit.periapsis_altitude
+				line = "P0=A:"+fval+time_format(self.orbitstreamapotime())+"\n"
+				val = self.orbitstreamperialt()
 				if val>=0:
 					fval = si_format(val, precision=2).rjust(7)[:7]+" "
 				else:
 					fval = si_format(val, precision=2).rjust(8)[:8]
-				line = line+"P1=P:"+fval+time_format(self.orbit.time_to_periapsis)+"\n"
+				line = line+"P1=P:"+fval+time_format(self.orbitstreamperitime())+"\n"
 			elif self.lcdmode==1: # switch on right = Landing Altitude+Speed
-				fval = si_format(self.flight().surface_altitude, precision=3).rjust(8)[:8]
+				fval = si_format(self.flightstream().surface_altitude, precision=3).rjust(8)[:8]
 				line = "P0=ALT:"+fval+"m\nP1=V:"+chr(2)
 	#			print(str(ss)+"\t"+str(vs)+"\t"+str(self.flightstream().g_force)+"\t"+str(self.flight().g_force))
 				fval = si_format(abs(self.flightstream().horizontal_speed), precision=0).rjust(5)[:5]
@@ -72,7 +78,7 @@ class StatusDisplays(threading.Thread):
 				line = line+fval+chr(1)+"\n"
 			elif self.lcdmode==2: # switch on left = Target(?)
 				line="P0=Mode 1 Left\nP1=Target mode\n"
-				line="P0=Ecct.:"+str(round(self.orbit.eccentricity,3))+"\nP1=Incl.:"+str(round(self.orbit.inclination*180/pi,2))+chr(223)+"\n"
+				line="P0=Ecct.:"+str(round(self.orbitstreamecc(),3))+"\nP1=Incl.:"+str(round(self.orbitstreamincl()*180/pi,2))+chr(223)+"\n"
 #			print("mode"+str(self.lcdmode)+" "+line)
 			myserwrite(bytes([x for x in map(ord,line)]))
 			# OLED orbit
@@ -81,8 +87,8 @@ class StatusDisplays(threading.Thread):
 				if self.oledmode==0: # switch in middle = Orbit
 					cx = int(128/2)
 					cy = int(16+(64-16)/2)
-					sx = self.orbit.semi_major_axis
-					sy = self.orbit.semi_minor_axis
+					sx = self.orbitstreamsemimajor()
+					sy = self.orbitstreamsemiminor()
 #					print("sx="+str(sx)+"\tsy="+str(sy)+"\n")
 					try:
 						scalex = sx/cx
@@ -97,7 +103,7 @@ class StatusDisplays(threading.Thread):
 						line="O5 "+str(int(cx-sx/2))+" "+str(cy)+" "+str(sx)+" "
 						line=line+"6 "+str(cx)+" "+str(int(cy-sy/2))+" "+str(sy)+" "
 						line=line+"9 "+str(cx)+" "+str(cy)+" "+str(int(sx/3))+" "+str(int(sy/3))+" "
-						ec = pi/2-self.orbit.inclination
+						ec = pi/2-self.orbitstreamincl()
 						sx = int(cx+24*sin(ec))
 						sy = int(cy-24*cos(ec))
 						line=line+"7 "+str(cx)+" "+str(cy)+" "+str(sx)+" "+str(sy)+"\n"
@@ -128,7 +134,14 @@ def main_serial_loop():
 	rcsstream = conn.add_stream(getattr,vessel.control,'rcs')
 	gearstream = conn.add_stream(getattr,vessel.control,'gear')
 	lightstream = conn.add_stream(getattr,vessel.control,'lights')
-	orbit	 = vessel.orbit
+	orbitstreamapoalt = conn.add_stream(getattr,vessel.orbit,'apoapsis_altitude')
+	orbitstreamapotime = conn.add_stream(getattr,vessel.orbit,'time_to_apoapsis')
+	orbitstreamperialt = conn.add_stream(getattr,vessel.orbit,'periapsis_altitude')
+	orbitstreamperitime = conn.add_stream(getattr,vessel.orbit,'time_to_periapsis')
+	orbitstreamecc = conn.add_stream(getattr,vessel.orbit,'eccentricity')
+	orbitstreamincl = conn.add_stream(getattr,vessel.orbit,'inclination')
+	orbitstreamsemimajor = conn.add_stream(getattr,vessel.orbit,'semi_major_axis')
+	orbitstreamsemiminor = conn.add_stream(getattr,vessel.orbit,'semi_minor_axis')
 
 	# do temperature/overheat estimation in separate thread so command & control is not blocked by this
 	temp_pct = -1
@@ -315,7 +328,7 @@ def main_serial_loop():
 
 			# Status
 			if statusthread == None:
-				statusthread = StatusDisplays(orbit,vessel.flight,flightstream,lcdmode,oledmode,lastgforce,lastoledline,lastoledtime)
+				statusthread = StatusDisplays(flightstream,lcdmode,oledmode,lastgforce,lastoledline,lastoledtime,orbitstreamapoalt,orbitstreamapotime,orbitstreamperialt,orbitstreamperitime,orbitstreamecc,orbitstreamincl,orbitstreamsemimajor,orbitstreamsemiminor)
 				statusthread.start()
 			elif not statusthread.is_alive():
 				lastgforce = statusthread.lastgforce

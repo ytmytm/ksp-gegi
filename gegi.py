@@ -22,17 +22,18 @@ def myserflush():
 	global lastflush
 	if (True or ser.out_waiting>0):
 		ser.flush()
-		print("Flush!"+str(round((time.time()-lastflush)*1000))+"\t"+str(ser.out_waiting))
+#		print("Flush!"+str(round((time.time()-lastflush)*1000))+"\t"+str(ser.out_waiting))
 		lastflush = time.time()
 
 # thread to display status (G-force, LCD, OLED)
 class StatusDisplays(threading.Thread):
-	def __init__(self,flightstream,lcdmode,oledmode,lastgforce,lastoledline,lastoledtime,orbitstreamapoalt,orbitstreamapotime,orbitstreamperialt,orbitstreamperitime,orbitstreamecc,orbitstreamincl,orbitstreamsemimajor,orbitstreamsemiminor):
+	def __init__(self,flightstream,flightstreamorbital,lcdmode,oledmode,lastgforce,lastoledline,lastoledtime,orbitstreamapoalt,orbitstreamapotime,orbitstreamperialt,orbitstreamperitime,orbitstreamecc,orbitstreamincl,orbitstreamsemimajor,orbitstreamsemiminor):
 		super(StatusDisplays, self).__init__()
 		self.lcdmode = lcdmode
 		self.oledmode = oledmode
 		self.lastgforce = lastgforce
 		self.flightstream = flightstream
+		self.flightstreamorbital = flightstreamorbital
 		self.lastoledtime = lastoledtime
 		self.lastoledline = lastoledline
 		self.orbitstreamapoalt = orbitstreamapoalt
@@ -82,7 +83,7 @@ class StatusDisplays(threading.Thread):
 #			print("mode"+str(self.lcdmode)+" "+line)
 			myserwrite(bytes([x for x in map(ord,line)]))
 			# OLED orbit
-			if (time.time()-self.lastoledtime)>2: # every 2s
+			if (time.time()-self.lastoledtime)>.2: # every 1s
 				self.lastoledtime = time.time()
 				if self.oledmode==0: # switch in middle = Orbit
 					cx = int(128/2)
@@ -110,10 +111,26 @@ class StatusDisplays(threading.Thread):
 					except ValueError:
 						line=self.lastoledline
 				elif self.oledmode==1:
-					line="O1 10 10 Mode1\\ \n"
+          # map difference between direction and prograde to unit circle (navball like)
+					prog = self.flightstreamorbital().prograde
+					dir = self.flightstreamorbital().direction
+          # these calculations are wrong...
+					dx = prog[0]-dir[0]
+					dy = prog[1]-dir[1]
+					dz = prog[2]-dir[2]
+					back = (dir[1]<0)
+					sx = 40+48/2+int(dz*48/2)
+					sy = 16+48/2+int(dx*48/2)
+					line = "O4 64 40 O8 64 40 23 "
+					if back:
+					  line=line+"O3 "
+					else:
+					  line=line+"O2 "
+					line=line+str(int(sx-2))+" "+str(int(sy-2))+" 5 5\n"
+					print("sx="+str(int(sx))+"\tsy="+str(int(sy))+"\n")
 				elif self.oledmode==2:
 					line="O1 10 10 Mode2\\ \n"
-#				print("omode"+str(self.oledmode)+"\\"+line+"\\")
+				print("omode"+str(self.oledmode)+"\\"+line+"\\")
 				if line!=self.lastoledline:
 					self.lastoledline=line
 					myserwrite(line.encode())
@@ -129,6 +146,7 @@ def main_serial_loop():
 
 	control  = vessel.control
 	flightstream = conn.add_stream(vessel.flight,vessel.orbit.body.reference_frame)
+	flightstreamorbital = conn.add_stream(vessel.flight,vessel.orbital_reference_frame)
 	maxtmpstream = conn.add_stream(conn.gegi.active_gegi.max_temp_pct)
 	sasstream = conn.add_stream(getattr,vessel.control,'sas')
 	rcsstream = conn.add_stream(getattr,vessel.control,'rcs')
@@ -328,7 +346,7 @@ def main_serial_loop():
 
 			# Status
 			if statusthread == None:
-				statusthread = StatusDisplays(flightstream,lcdmode,oledmode,lastgforce,lastoledline,lastoledtime,orbitstreamapoalt,orbitstreamapotime,orbitstreamperialt,orbitstreamperitime,orbitstreamecc,orbitstreamincl,orbitstreamsemimajor,orbitstreamsemiminor)
+				statusthread = StatusDisplays(flightstream,flightstreamorbital,lcdmode,oledmode,lastgforce,lastoledline,lastoledtime,orbitstreamapoalt,orbitstreamapotime,orbitstreamperialt,orbitstreamperitime,orbitstreamecc,orbitstreamincl,orbitstreamsemimajor,orbitstreamsemiminor)
 				statusthread.start()
 			elif not statusthread.is_alive():
 				lastgforce = statusthread.lastgforce

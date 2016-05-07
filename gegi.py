@@ -455,6 +455,9 @@ def main():
 				print("Not in proper game scene")
 				myserwrite("P0=Waiting for\nP1=game scene\n".encode())
 				time.sleep(.5)
+			except ConnectionResetError:
+				ser.close()
+				sys.exit("Connection closed")
 
 if __name__ == '__main__':
     main()

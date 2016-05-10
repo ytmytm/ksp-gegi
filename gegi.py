@@ -213,7 +213,10 @@ def main_serial_loop():
 						print("Throttle conversion problem: ["+line+"]:\n")
 				if line[:3]=="P1=":
 					# timewarp
-					newtimewarp = min(int(line[3:],16)/255/0.9,1)
+					try:
+						newtimewarp = min(int(line[3:],16)/255/0.9,1)
+					except ValueError:
+						print("Timewarp conversion problem: ["+line+"]:\n")
 					railslevel = int(newtimewarp*7)
 					physlevel = int(newtimewarp*4)
 					if (conn.space_center.warp_mode == conn.space_center.WarpMode.rails):

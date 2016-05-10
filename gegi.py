@@ -459,6 +459,7 @@ def main():
 				myserwrite("P0=Waiting for\nP1=game scene\n".encode())
 				time.sleep(.5)
 			except ConnectionResetError:
+				myserwrite("P0=Connection\nP1=closed\n".encode())
 				ser.close()
 				sys.exit("Connection closed")
 

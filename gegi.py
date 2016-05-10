@@ -114,23 +114,29 @@ class StatusDisplays(threading.Thread):
           # map difference between direction and prograde to unit circle (navball like)
 					prog = self.flightstreamorbital().prograde
 					dir = self.flightstreamorbital().direction
-          # these calculations are wrong...
+					roll = self.flightstreamorbital().roll
+          # take x/z plane and rotate it by vessel roll angle; reverse if pointing back
 					dx = prog[0]-dir[0]
 					dy = prog[1]-dir[1]
 					dz = prog[2]-dir[2]
-					back = (dir[1]<0)
-					sx = 40+48/2+int(dz*48/2)
-					sy = 16+48/2+int(dx*48/2)
+					back = (prog[1]*dir[1]<0) # different signs?
+					sgn = -1
+					if (back): sgn=1
+					ca = cos(sgn*roll*pi/180.0)
+					sa = sin(sgn*roll*pi/180.0)
+					ddx = dx*ca-dz*sa
+					ddz = dx*sa+dz*ca
+					sx = 40+48/2+(-sgn)*int(ddz*48/2)
+					sy = 16+48/2-int(ddx*48/2)
 					line = "O4 64 40 O8 64 40 23 "
 					if back:
 					  line=line+"O3 "
 					else:
 					  line=line+"O2 "
 					line=line+str(int(sx-2))+" "+str(int(sy-2))+" 5 5\n"
-					print("sx="+str(int(sx))+"\tsy="+str(int(sy))+"\n")
 				elif self.oledmode==2:
 					line="O1 10 10 Mode2\\ \n"
-				print("omode"+str(self.oledmode)+"\\"+line+"\\")
+#				print("omode"+str(self.oledmode)+"\\"+line+"\\")
 				if line!=self.lastoledline:
 					self.lastoledline=line
 					myserwrite(line.encode())

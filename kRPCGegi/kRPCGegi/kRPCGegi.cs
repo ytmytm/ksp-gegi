@@ -9,6 +9,13 @@ using KRPC.Service.Attributes;
 /// 
 namespace kRPCGegi
 {
+	[KRPCService]
+	public static class GegiVersion {
+		[KRPCProperty]
+		public static string Version {
+			get { return "1.0"; }
+		}
+	}
 	/// <summary>
 	/// Service for efficient status retrieval
 	/// </summary>

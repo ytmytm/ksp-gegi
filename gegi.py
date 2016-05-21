@@ -442,7 +442,8 @@ def main():
   # is kRPCGegi supported?
 	try:
 		print("Checking for kRPC Gegi service\n")
-		check = conn.gegi.active_gegi.max_temp_pct()
+		check = conn.gegi_version.version
+		print("kRPC Gegi "+check+" available\n")
 	except AttributeError:
 		sys.exit("kRPC GEGI service not available. Make sure that kRPCGegi.dll is in GameData/kRPC directory")
 	except krpc.error.RPCError:

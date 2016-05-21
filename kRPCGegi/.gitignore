@@ -6,6 +6,7 @@
 [Bb]in/
 packages/
 TestResults/
+#!kRPCGegi\bin\Release\kRPCGegi.dll
 
 # globs
 Makefile.in

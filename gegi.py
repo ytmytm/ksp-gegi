@@ -73,7 +73,6 @@ class StatusDisplays(threading.Thread):
 			elif self.lcdmode==1: # switch on right = Landing Altitude+Speed
 				fval = si_format(self.flightstream().surface_altitude, precision=3).rjust(8)[:8]
 				line = "P0=ALT:"+fval+"m\nP1=V:"+chr(2)
-	#			print(str(ss)+"\t"+str(vs)+"\t"+str(self.flightstream().g_force)+"\t"+str(self.flight().g_force))
 				fval = si_format(abs(self.flightstream().horizontal_speed), precision=0).rjust(5)[:5]
 				line = line+fval+" "+chr(3)
 				fval = si_format(abs(self.flightstream().vertical_speed), precision=0).rjust(5)[:5]
@@ -375,8 +374,8 @@ def main_serial_loop():
 			if ((temp_pct>=0.8) and (overheat!=2)):
 				overheat = 2
 				myserwrite(b"LG12=0\nLR12=3\n")
-#      print("Max heat: "+str(round(temp_pct*100,0))+" gegiservice:"+str(krpcgegi)+" time="+str(time.time()-lasttemptime))
-			lasttemptime = time.time()
+#			lasttemptime = time.time()
+#			print("Max heat: "+str(round(temp_pct*100,0))+" time="+str(time.time()-lasttemptime))
 			# power
 			rmax = resourceelectricmaxstream()
 			if rmax>0:

@@ -21,6 +21,7 @@ def myserflush():
 	global ser
 	global lastflush
 	if (ser.out_waiting>0):
+		ser.flushOutput()
 		ser.flush()
 		lastflush = time.time()
 		print("Flush!"+str(round((time.time()-lastflush)*1000))+"\t"+str(ser.out_waiting))

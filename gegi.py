@@ -214,13 +214,13 @@ def main_serial_loop():
 	#			print("Serial:["+line+"]\n----\n")
 				if line[:3]=="P0=":
 					try:
-						control.throttle = int(line[3:],16)/255
+						control.throttle = float(int(line[3:],16))/255
 					except ValueError:
 						print("Throttle conversion problem: ["+line+"]:\n")
 				if line[:3]=="P1=":
 					# timewarp
 					try:
-						newtimewarp = min(int(line[3:],16)/255/0.9,1)
+						newtimewarp = min(float(int(line[3:],16))/255/0.9,1)
 					except ValueError:
 						print("Timewarp conversion problem: ["+line+"]:\n")
 					railslevel = int(newtimewarp*7)

@@ -81,7 +81,7 @@ class StatusDisplays(threading.Thread):
 				line="P0=Mode 1 Left\nP1=Target mode\n"
 				line="P0=Ecct.:"+str(round(self.orbitstreamecc(),3))+"\nP1=Incl.:"+str(round(self.orbitstreamincl()*180/pi,2))+chr(223)+"\n"
 #			print("mode"+str(self.lcdmode)+" "+line)
-			myserwrite(bytes([x for x in map(ord,line)]))
+			myserwrite(line)
 			# OLED orbit
 			if (time.time()-self.lastoledtime)>.2: # every 1s
 				self.lastoledtime = time.time()
